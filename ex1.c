@@ -17,6 +17,11 @@ main(int argc, char **argv)
   // the value of x by 1 using in-line assembly
   //
 
+  asm ("inc %1"       // Increment x
+        : "=r" (x)    // x as output variable %0
+        : "r" (x)     // x as input variable %1
+  );
+
   printf("Hello x = %d after increment\n", x);
 
   if(x == 2){
@@ -25,4 +30,6 @@ main(int argc, char **argv)
   else{
     printf("ERROR\n");
   }
+
+  return 0;
 }
