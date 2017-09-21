@@ -7,8 +7,13 @@ int sys_wolfie(void) {
     int size;
     int wolfie_size = sizeof(WOLFIE);
 
-    if (argstr(0, &buf) < 0 || argint(1, &size) < 0 || size < wolfie_size) {
+    // Get arguments from stack and do error checks
+    if (argstr(0, &buf) < 0 || argint(1, &size) < 0) {
         return -1;
+    }
+
+    if (size < wolfie_size || buf <= 0) {
+    	return -1;
     }
 
     memmove(buf, WOLFIE, wolfie_size);
