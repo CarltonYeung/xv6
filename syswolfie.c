@@ -3,16 +3,16 @@
 #include "syswolfie.h"
 
 int sys_wolfie(void) {
-    char *buf;
-    int size;
+    char *buf = 0;
+    int size = 0;
     int wolfie_size = sizeof(WOLFIE);
 
     // Get arguments from stack and do error checks
-    if (argstr(0, &buf) < 0 || argint(1, &size) < 0) {
+    if (argint(1, &size) < 0 || argptr(0, &buf, size) < 0) {
         return -1;
     }
 
-    if (size < wolfie_size || buf <= 0) {
+    if (size < wolfie_size) {
     	return -1;
     }
 

@@ -6,9 +6,9 @@ int main(void) {
 	uint size = 649;
     char buf[size];
 
-    int bytes = wolfie(&buf, size);
+    wolfie(&buf, size);
 
-    printf(1, "Number of bytes = %d\n%s", bytes, &buf);
+    printf(1, "%s", &buf);
     
     return 0;
 }
