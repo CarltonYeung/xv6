@@ -1,2 +1,2 @@
-# env.mk - do not modify this file
-LAB=1
+# lab.mk - do not modify this file
+LAB=2

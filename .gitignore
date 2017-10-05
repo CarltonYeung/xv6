@@ -15,5 +15,3 @@ kernelmemfs
 mkfs
 .gdbinit
 .project
-.cproject
-.settings/
