@@ -17,7 +17,10 @@ extern char end[]; // first address after kernel loaded from ELF file
 
 struct run {
   struct run *next;
+  int refcount;
 };
+
+void update_refcount(struct run *r, int count);
 
 struct {
   struct spinlock lock;
@@ -69,17 +72,24 @@ kfree(char *v)
   if((uint)v % PGSIZE || v < end || V2P(v) >= PHYSTOP)
     panic("kfree");
 
-  // Fill with junk to catch dangling refs.
-  memset(v, 1, PGSIZE);
-
   if(kmem.use_lock)
     acquire(&kmem.lock);
 
   // Lab2: because we moved 'runs' to kmem
   //r = (struct run*)v;
   r = &kmem.runs[(V2P(v) / PGSIZE)];
-  r->next = kmem.freelist;
-  kmem.freelist = r;
+
+  // Assert that the refcount is one when a page is freed
+  if(r->refcount <= 1) {
+    // Fill with junk to catch dangling refs.
+    memset(v, 1, PGSIZE);
+
+    r->next = kmem.freelist;
+    kmem.freelist = r;
+  }
+
+  update_refcount(r, -1);
+
   if(kmem.use_lock)
     release(&kmem.lock);
 }
@@ -95,9 +105,14 @@ kalloc(void)
 
   if(kmem.use_lock)
     acquire(&kmem.lock);
+
   r = kmem.freelist;
-  if(r)
+
+  if(r) {
     kmem.freelist = r->next;
+    r->refcount = 1;
+  }
+
   if(kmem.use_lock)
     release(&kmem.lock);
 
@@ -105,5 +120,12 @@ kalloc(void)
   //return (char*)r;
   rv = r ? P2V((r - kmem.runs) * PGSIZE) : r;
   return rv;
+}
+
+// Helper function to update refcount by count
+void
+update_refcount(struct run *r, int count)
+{
+  r->refcount = (r->refcount + count < 0)? 0 : r->refcount + count;
 }
 
