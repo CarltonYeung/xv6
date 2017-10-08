@@ -20,8 +20,6 @@ struct run {
   int refcount;
 };
 
-void update_refcount(struct run *r, int count);
-
 struct {
   struct spinlock lock;
   int use_lock;
@@ -88,7 +86,7 @@ kfree(char *v)
     kmem.freelist = r;
   }
 
-  update_refcount(r, -1);
+  dec_refcount(v);
 
   if(kmem.use_lock)
     release(&kmem.lock);
@@ -122,10 +120,20 @@ kalloc(void)
   return rv;
 }
 
-// Helper function to update refcount by count
 void
-update_refcount(struct run *r, int count)
+inc_refcount(void *va)
 {
-  r->refcount = (r->refcount + count < 0)? 0 : r->refcount + count;
+  struct run *r;
+  r = &kmem.runs[(V2P(va) / PGSIZE)];
+  __sync_add_and_fetch(&r->refcount, 1);
+}
+
+void
+dec_refcount(void *va)
+{
+  struct run *r;
+  r = &kmem.runs[(V2P(va) / PGSIZE)];
+  if(r->refcount > 0)
+    __sync_sub_and_fetch(&r->refcount, 1);
 }
 

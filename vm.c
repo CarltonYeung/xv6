@@ -342,6 +342,47 @@ bad:
   return 0;
 }
 
+pde_t*
+cowuvm(pde_t *pgdir, uint sz)
+{
+  pde_t *my_pgdir;
+  pte_t *pte;
+  uint pa, i, flags;
+
+  if((my_pgdir = setupkvm()) == 0)
+    return 0;
+
+  for(i = 0; i < sz; i += PGSIZE){
+    if((pte = walkpgdir(pgdir, (void *)i, 0)) == 0)
+      panic("cowuvm: pte should exist");
+    if(!(*pte & PTE_P))
+      panic("cowuvm: page not present");
+
+    pa = PTE_ADDR(*pte);
+    flags = PTE_FLAGS(*pte);
+
+    // For parent's pgdir: If writeable, convert to read-only and PTE_COW
+    if(flags & PTE_W){
+      flags &= ~PTE_W;
+      flags |= PTE_COW;
+      *pte = pa | flags;
+
+      // Shoot down TLB
+      invlpg((void *)i);
+
+      // Update refcount
+      inc_refcount((void *)i);
+    }
+
+    if(mappages(my_pgdir, (void *)i, PGSIZE, pa, flags) < 0){
+      freevm(my_pgdir);
+      return 0;
+    }
+  }
+
+  return my_pgdir;
+}
+
 // Map user virtual address to kernel address.
 char*
 uva2ka(pde_t *pgdir, char *uva)
