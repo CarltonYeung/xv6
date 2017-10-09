@@ -347,40 +347,81 @@ cowuvm(pde_t *pgdir, uint sz)
 {
   pde_t *my_pgdir;
   pte_t *pte;
-  uint pa, i, flags;
+  uint i, p, flags;
 
   if((my_pgdir = setupkvm()) == 0)
     return 0;
 
   for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walkpgdir(pgdir, (void *)i, 0)) == 0)
+    if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("cowuvm: pte should exist");
     if(!(*pte & PTE_P))
       panic("cowuvm: page not present");
 
-    pa = PTE_ADDR(*pte);
+    p = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
 
-    // For parent's pgdir: If writeable, convert to read-only and PTE_COW
-    if(flags & PTE_W){
+    if(flags & PTE_W){ // For parent's pgdir: If writeable, convert to read-only and PTE_COW
       flags &= ~PTE_W;
       flags |= PTE_COW;
-      *pte = pa | flags;
-
-      // Shoot down TLB
-      invlpg((void *)i);
-
-      // Update refcount
-      inc_refcount((void *)i);
+      *pte = p | flags;
+      invlpg((void *)i); // Shoot down TLB
+      inc_refcount((void *) P2V(p));
     }
 
-    if(mappages(my_pgdir, (void *)i, PGSIZE, pa, flags) < 0){
+    // Map virtual address to the same physical address as its parent's
+    if(mappages(my_pgdir, (void *) i, PGSIZE, p, flags) < 0){
       freevm(my_pgdir);
       return 0;
     }
   }
 
   return my_pgdir;
+}
+
+int
+cow_handler()
+{
+  struct proc *cur = myproc();
+  uint pfla = rcr2();  // page fault linear address
+  pde_t *pgdir;
+  int refcount;
+  pde_t *pte;
+  uint p;
+  uint flags;
+  char *mem;
+
+  pgdir = cur->pgdir;
+  if((pte = walkpgdir(pgdir, (void *) pfla, 0)) == 0)
+    panic("cow_handler: pte should exist");
+  if(!(*pte & PTE_P))
+    panic("cow_handler: page not present");
+  p = PTE_ADDR(*pte); // original page
+  flags = PTE_FLAGS(*pte);
+
+  // Check if the fault is for an address whose PTE includes the PTE_COW flag
+  if(!(*pte & PTE_COW)){
+    goto bad;
+  } else {
+    flags |= PTE_W; // Restore writeable
+    refcount = get_refcount(P2V(p));
+    if(refcount > 1){ // Copy the page
+      if((mem = kalloc()) == 0)
+        goto bad;
+      memmove(mem, (char*) P2V(p), PGSIZE);
+      *pte = V2P(mem) | flags;
+      dec_refcount(P2V(p));
+    } else if(refcount == 1){ // Remove PTE_COW flag
+      flags &= ~PTE_COW;
+      *pte = p | flags;
+    }
+    invlpg((void *) pfla); // Shoot down TLB
+    return 0;
+  }
+
+  bad:
+    freevm(pgdir);
+    return -1;
 }
 
 // Map user virtual address to kernel address.

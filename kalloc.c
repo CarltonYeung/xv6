@@ -121,19 +121,33 @@ kalloc(void)
 }
 
 void
-inc_refcount(void *va)
+inc_refcount(void *v)
 {
   struct run *r;
-  r = &kmem.runs[(V2P(va) / PGSIZE)];
+  if((uint)v % PGSIZE || (char *)v < end || V2P(v) >= PHYSTOP)
+      panic("inc_refcount");
+  r = &kmem.runs[(V2P(v) / PGSIZE)];
   __sync_add_and_fetch(&r->refcount, 1);
 }
 
 void
-dec_refcount(void *va)
+dec_refcount(void *v)
 {
   struct run *r;
-  r = &kmem.runs[(V2P(va) / PGSIZE)];
+  if((uint)v % PGSIZE || (char *)v < end || V2P(v) >= PHYSTOP)
+        panic("dec_refcount");
+  r = &kmem.runs[(V2P(v) / PGSIZE)];
   if(r->refcount > 0)
     __sync_sub_and_fetch(&r->refcount, 1);
+}
+
+int
+get_refcount(void *v)
+{
+  struct run *r;
+  if((uint)v % PGSIZE || (char *)v < end || V2P(v) >= PHYSTOP)
+        panic("get_refcount");
+  r = &kmem.runs[V2P(v) / PGSIZE];
+  return r->refcount;
 }
 
