@@ -45,6 +45,16 @@ trap(struct trapframe *tf)
     return;
   }
 
+  if(tf->trapno == T_PGFLT){
+    if(myproc()->killed)
+      exit();
+    myproc()->tf = tf;
+    cow_handler();
+    if(myproc()->killed)
+      exit();
+    return;
+  }
+
   switch(tf->trapno){
   case T_IRQ0 + IRQ_TIMER:
     if(cpuid() == 0){
@@ -75,23 +85,6 @@ trap(struct trapframe *tf)
     cprintf("cpu%d: spurious interrupt at %x:%x\n",
             cpuid(), tf->cs, tf->eip);
     lapiceoi();
-    break;
-  case T_PGFLT:
-    if(myproc() == 0 || (tf->cs&3) == 0){
-      // In kernel, it must be our mistake.
-      cprintf("HW2 Exercise 2: unexpected trap %d from cpu %d eip %x (cr2=0x%x)\n",
-              tf->trapno, cpuid(), tf->eip, rcr2());
-      panic("trap");
-    }
-
-    if((tf->err & (FEC_WR | FEC_U)) == (FEC_WR | FEC_U))
-      if(cow_handler() < 0)
-        goto bad;
-
-    break;
-
-    bad:
-    myproc()->killed = 1;
     break;
 
   default:

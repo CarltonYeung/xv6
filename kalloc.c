@@ -70,26 +70,27 @@ kfree(char *v)
   if((uint)v % PGSIZE || v < end || V2P(v) >= PHYSTOP)
     panic("kfree");
 
+  // Fill with junk to catch dangling refs.
+  memset(v, 1, PGSIZE);
+
   if(kmem.use_lock)
     acquire(&kmem.lock);
 
   // Lab2: because we moved 'runs' to kmem
   //r = (struct run*)v;
   r = &kmem.runs[(V2P(v) / PGSIZE)];
-
-  // Assert that the refcount is one when a page is freed
-  if(r->refcount <= 1) {
-    // Fill with junk to catch dangling refs.
-    memset(v, 1, PGSIZE);
-
-    r->next = kmem.freelist;
-    kmem.freelist = r;
-  }
-
-  dec_refcount(v);
+  r->next = kmem.freelist;
+  kmem.freelist = r;
 
   if(kmem.use_lock)
     release(&kmem.lock);
+
+  if(r->refcount > 1){
+      cprintf("kfree: %p refcount is not 1: %d\n", v, r->refcount);
+      panic("kfree: refcount is not 1");
+  }
+
+  dec_refcount((void *) v);
 }
 
 // Allocate one 4096-byte page of physical memory.

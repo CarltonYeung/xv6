@@ -347,7 +347,7 @@ cowuvm(pde_t *pgdir, uint sz)
 {
   pde_t *my_pgdir;
   pte_t *pte;
-  uint i, p, flags;
+  uint i, pa, flags;
 
   if((my_pgdir = setupkvm()) == 0)
     return 0;
@@ -358,70 +358,82 @@ cowuvm(pde_t *pgdir, uint sz)
     if(!(*pte & PTE_P))
       panic("cowuvm: page not present");
 
-    p = PTE_ADDR(*pte);
+    pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
 
-    if(flags & PTE_W){ // For parent's pgdir: If writeable, convert to read-only and PTE_COW
+    if(flags & PTE_W){ // If writeable, convert to read-only and PTE_COW
       flags &= ~PTE_W;
       flags |= PTE_COW;
-      *pte = p | flags;
-      invlpg((void *)i); // Shoot down TLB
-      inc_refcount((void *) P2V(p));
+      *pte = pa | flags;
+      invlpg((void *) i); // Shoot down TLB
     }
 
     // Map virtual address to the same physical address as its parent's
-    if(mappages(my_pgdir, (void *) i, PGSIZE, p, flags) < 0){
+    if(mappages(my_pgdir, (void *) i, PGSIZE, pa, flags) < 0){
       freevm(my_pgdir);
       return 0;
     }
+
+    inc_refcount((void *) P2V(pa));
   }
 
   return my_pgdir;
 }
 
-int
+void
 cow_handler()
 {
-  struct proc *cur = myproc();
-  uint pfla = rcr2();  // page fault linear address
-  pde_t *pgdir;
-  int refcount;
-  pde_t *pte;
-  uint p;
-  uint flags;
+  struct proc *curproc = myproc();
+  struct trapframe *tf = curproc->tf;
+  uint pfla = rcr2();
+  pde_t *pgdir = curproc->pgdir;
+  pte_t *pte;
+  uint pa, flags;
   char *mem;
 
-  pgdir = cur->pgdir;
-  if((pte = walkpgdir(pgdir, (void *) pfla, 0)) == 0)
-    panic("cow_handler: pte should exist");
-  if(!(*pte & PTE_P))
-    panic("cow_handler: page not present");
-  p = PTE_ADDR(*pte); // original page
-  flags = PTE_FLAGS(*pte);
-
-  // Check if the fault is for an address whose PTE includes the PTE_COW flag
-  if(!(*pte & PTE_COW)){
-    goto bad;
-  } else {
-    flags |= PTE_W; // Restore writeable
-    refcount = get_refcount(P2V(p));
-    if(refcount > 1){ // Copy the page
-      if((mem = kalloc()) == 0)
-        goto bad;
-      memmove(mem, (char*) P2V(p), PGSIZE);
-      *pte = V2P(mem) | flags;
-      dec_refcount(P2V(p));
-    } else if(refcount == 1){ // Remove PTE_COW flag
-      flags &= ~PTE_COW;
-      *pte = p | flags;
+  if(tf->err & FEC_WR){
+    if((tf->err & FEC_U) && pfla >= KERNBASE){
+      cprintf("cow_handler: user trying to write to kernel space\n");
+      curproc->killed = 1;
+      return;
     }
-    invlpg((void *) pfla); // Shoot down TLB
-    return 0;
+
+    if((pte = walkpgdir(pgdir, (void *) pfla, 0)) == 0)
+      panic("cow_handler: pte should exist");
+    if(!(*pte & PTE_P))
+      panic("cow_handler: page not present");
+
+    pa = PTE_ADDR(*pte);
+    flags = PTE_FLAGS(*pte);
+
+    if(!(flags & PTE_COW)){
+      cprintf("cow_handler: not a COW page\n");
+      curproc->killed = 1;
+      return;
+    }
+
+    if(get_refcount((void *) P2V(pa)) > 1){
+      if((mem = kalloc()) == 0){
+        freevm(pgdir);
+        kfree(curproc->kstack);
+        curproc->kstack = 0;
+        curproc->state = UNUSED;
+        curproc->killed = 1;
+        tf->eax = -1;
+        panic("cow_handler: kalloc returned 0");
+      }
+
+      memmove((void *) mem, (void *) P2V(pa), PGSIZE);
+      dec_refcount((void *) P2V(pa));
+
+      pa = V2P(mem);
+      flags |= PTE_W;
+      flags &= ~PTE_COW;
+      *pte = pa | flags;
+      invlpg((void *) pfla);
+    }
   }
 
-  bad:
-    freevm(pgdir);
-    return -1;
 }
 
 // Map user virtual address to kernel address.
