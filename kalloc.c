@@ -70,27 +70,27 @@ kfree(char *v)
   if((uint)v % PGSIZE || v < end || V2P(v) >= PHYSTOP)
     panic("kfree");
 
-  // Fill with junk to catch dangling refs.
-  memset(v, 1, PGSIZE);
-
   if(kmem.use_lock)
     acquire(&kmem.lock);
 
   // Lab2: because we moved 'runs' to kmem
   //r = (struct run*)v;
   r = &kmem.runs[(V2P(v) / PGSIZE)];
-  r->next = kmem.freelist;
-  kmem.freelist = r;
+
+  if(r->refcount <= 1){
+    // Fill with junk to catch dangling refs.
+    memset(v, 1, PGSIZE);
+    r->next = kmem.freelist;
+    kmem.freelist = r;
+    r->refcount = 0;
+  } else {
+    dec_refcount((void *) v);
+    //cprintf("kfree: %p refcount is not 1: %d\n", v, r->refcount);
+    //panic("\n");
+  }
 
   if(kmem.use_lock)
     release(&kmem.lock);
-
-  if(r->refcount > 1){
-      cprintf("kfree: %p refcount is not 1: %d\n", v, r->refcount);
-      panic("kfree: refcount is not 1");
-  }
-
-  dec_refcount((void *) v);
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -128,7 +128,9 @@ inc_refcount(void *v)
   if((uint)v % PGSIZE || (char *)v < end || V2P(v) >= PHYSTOP)
       panic("inc_refcount");
   r = &kmem.runs[(V2P(v) / PGSIZE)];
+  //cprintf("%p inc_refcount before->after: %d", v, r->refcount);
   __sync_add_and_fetch(&r->refcount, 1);
+  //cprintf("->%d\n", r->refcount);
 }
 
 void
@@ -138,8 +140,13 @@ dec_refcount(void *v)
   if((uint)v % PGSIZE || (char *)v < end || V2P(v) >= PHYSTOP)
         panic("dec_refcount");
   r = &kmem.runs[(V2P(v) / PGSIZE)];
-  if(r->refcount > 0)
+  if(r->refcount > 0){
+    //cprintf("%p dec_refcount before->after: %d", v, r->refcount);
     __sync_sub_and_fetch(&r->refcount, 1);
+    //cprintf("->%d\n", r->refcount);
+  } else {
+    cprintf("%p dec_refcount already 0: %d\n", v, r->refcount);
+  }
 }
 
 int

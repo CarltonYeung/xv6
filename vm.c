@@ -431,9 +431,17 @@ cow_handler()
       flags &= ~PTE_COW;
       *pte = pa | flags;
       invlpg((void *) pfla);
+    } else {
+      if(get_refcount((void *) P2V(pa)) < 1){
+        panic("cow handler: writing to page with refcount == 0");
+      }
+
+      flags |= PTE_W;
+      flags &= ~PTE_COW;
+      *pte = pa | flags;
+      invlpg((void *) P2V(pa));
     }
   }
-
 }
 
 // Map user virtual address to kernel address.
