@@ -441,6 +441,12 @@ cow_handler()
       *pte = pa | flags;
       invlpg((void *) P2V(pa));
     }
+  } else {
+    if(tf->err & FEC_U){
+      cprintf("cow_handler: user read fault\n");
+      curproc->killed = 1;
+      return;
+    }
   }
 }
 
