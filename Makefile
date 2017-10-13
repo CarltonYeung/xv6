@@ -179,6 +179,7 @@ UPROGS=\
 	_wc\
 	_zombie\
 	_wolfietest\
+	_cowforktest\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)

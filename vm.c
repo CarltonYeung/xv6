@@ -394,8 +394,7 @@ cow_handler()
   if(tf->err & FEC_WR){
     if((tf->err & FEC_U) && pfla >= KERNBASE){
       cprintf("cow_handler: user trying to write to kernel space\n");
-      curproc->killed = 1;
-      return;
+      goto bad;
     }
 
     if((pte = walkpgdir(pgdir, (void *) pfla, 0)) == 0)
@@ -408,19 +407,13 @@ cow_handler()
 
     if(!(flags & PTE_COW)){
       cprintf("cow_handler: not a COW page\n");
-      curproc->killed = 1;
-      return;
+      goto bad;
     }
 
     if(get_refcount((void *) P2V(pa)) > 1){
       if((mem = kalloc()) == 0){
-        freevm(pgdir);
-        kfree(curproc->kstack);
-        curproc->kstack = 0;
-        curproc->state = UNUSED;
-        curproc->killed = 1;
-        tf->eax = -1;
-        panic("cow_handler: kalloc returned 0");
+        cprintf("cow_handler: kalloc returned 0");
+        goto bad;
       }
 
       memmove((void *) mem, (void *) P2V(pa), PGSIZE);
@@ -433,7 +426,8 @@ cow_handler()
       invlpg((void *) pfla);
     } else {
       if(get_refcount((void *) P2V(pa)) < 1){
-        panic("cow handler: writing to page with refcount == 0");
+        cprintf("cow handler: writing to page with refcount == 0");
+        goto bad;
       }
 
       flags |= PTE_W;
@@ -441,13 +435,22 @@ cow_handler()
       *pte = pa | flags;
       invlpg((void *) P2V(pa));
     }
+
+    return;
+
   } else {
     if(tf->err & FEC_U){
-      cprintf("cow_handler: user read fault\n");
-      curproc->killed = 1;
-      return;
+      //cprintf("cow_handler: user read fault\n");
+      goto bad;
     }
+
+    return;
+
   }
+
+  bad:
+  curproc->killed = 1;
+  return;
 }
 
 // Map user virtual address to kernel address.
