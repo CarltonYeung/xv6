@@ -6,9 +6,7 @@ int main(void) {
 	uint size = 649;
     char buf[size];
 
-    wolfie(&buf, size);
-
-    printf(1, "%s", &buf);
-    
-    return 0;
+    wolfie(buf, size);
+    printf(1, "%s", buf);
+    exit();
 }
