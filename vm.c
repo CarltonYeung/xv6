@@ -342,6 +342,11 @@ bad:
   return 0;
 }
 
+/*
+ * Follows similar structure to copyuvm(), but instead of allocating physical pages
+ * for user address space cowuvm() sets up the child PTEs to point to the parent's
+ * physical pages.
+ */
 pde_t*
 cowuvm(pde_t *pgdir, uint sz)
 {
@@ -380,23 +385,21 @@ cowuvm(pde_t *pgdir, uint sz)
   return my_pgdir;
 }
 
+/*
+ * Handle page faults for both kernel and user.
+ */
 void
 cow_handler()
 {
   struct proc *curproc = myproc();
   struct trapframe *tf = curproc->tf;
-  uint pfla = rcr2();
+  uint pfla = rcr2();  // Page fault was caused by accessing Page Fault Linear Address
   pde_t *pgdir = curproc->pgdir;
   pte_t *pte;
   uint pa, flags;
   char *mem;
 
-  if(tf->err & FEC_WR){
-    if((tf->err & FEC_U) && pfla >= KERNBASE){
-      cprintf("cow_handler: user trying to write to kernel space\n");
-      goto bad;
-    }
-
+  if(tf->err & FEC_WR){ // Page fault was caused by write (both kernel and user)
     if((pte = walkpgdir(pgdir, (void *) pfla, 0)) == 0)
       panic("cow_handler: pte should exist");
     if(!(*pte & PTE_P))
@@ -407,16 +410,18 @@ cow_handler()
 
     if(!(flags & PTE_COW)){
       cprintf("cow_handler: not a COW page\n");
-      goto bad;
+      goto freeandkill;
     }
 
     if(get_refcount((void *) P2V(pa)) > 1){
+      /* Copy the page, decrement reference count for the original physical page,
+         update the PTE for current process, and invalidate the TLB entry. */
       if((mem = kalloc()) == 0){
         cprintf("cow_handler: kalloc returned 0");
-        goto bad;
+        goto freeandkill;
       }
-
       memmove((void *) mem, (void *) P2V(pa), PGSIZE);
+
       dec_refcount((void *) P2V(pa));
 
       pa = V2P(mem);
@@ -427,28 +432,38 @@ cow_handler()
     } else {
       if(get_refcount((void *) P2V(pa)) < 1){
         cprintf("cow handler: writing to page with refcount == 0");
-        goto bad;
+        goto freeandkill;
       }
 
+      /* There is only one reference to this physical page, so update the PTE to
+         restore write permission and remove PTE_COW flag, and invalidate the TLB. */
       flags |= PTE_W;
       flags &= ~PTE_COW;
       *pte = pa | flags;
       invlpg((void *) P2V(pa));
     }
 
+    /* At this point the instruction that caused the page fault is ready
+       to be re-executed. */
     return;
 
-  } else {
+  } else { // Page fault was caused by read
     if(tf->err & FEC_U){
-      //cprintf("cow_handler: user read fault\n");
-      goto bad;
+      // In user space, assume process misbehaved.
+      cprintf("pid %d %s: trap %d err %d on cpu %d "
+          "eip 0x%x addr 0x%x--kill proc\n",
+          myproc()->pid, myproc()->name, tf->trapno,
+          tf->err, cpuid(), tf->eip, rcr2());
+      goto kill;
     }
 
+    // Page fault was caused by kernel read
     return;
-
   }
 
-  bad:
+  freeandkill:
+  freevm(pgdir);
+  kill:
   curproc->killed = 1;
   return;
 }
