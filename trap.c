@@ -45,6 +45,16 @@ trap(struct trapframe *tf)
     return;
   }
 
+  if(tf->trapno == T_PGFLT){
+    if(myproc()->killed)
+      exit();
+    myproc()->tf = tf;
+    cow_handler();
+    if(myproc()->killed)
+      exit();
+    return;
+  }
+
   switch(tf->trapno){
   case T_IRQ0 + IRQ_TIMER:
     if(cpuid() == 0){

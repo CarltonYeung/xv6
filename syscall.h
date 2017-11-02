@@ -20,4 +20,5 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
+#define SYS_wolfie 22
 #define SYS_vdso_entry 23
