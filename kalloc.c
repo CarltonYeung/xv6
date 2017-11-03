@@ -79,14 +79,12 @@ kfree(char *v)
 
   if(r->refcount <= 1){
     // Fill with junk to catch dangling refs.
-    memset(v, 1, PGSIZE);
+    memset(v, 0, PGSIZE);
     r->next = kmem.freelist;
     kmem.freelist = r;
     r->refcount = 0;
   } else {
     dec_refcount((void *) v);
-    //cprintf("kfree: %p refcount is not 1: %d\n", v, r->refcount);
-    //panic("\n");
   }
 
   if(kmem.use_lock)
@@ -125,37 +123,41 @@ void
 inc_refcount(void *v)
 {
   struct run *r;
+
   if((uint)v % PGSIZE || (char *)v < end || V2P(v) >= PHYSTOP)
-      panic("inc_refcount");
+    panic("inc_refcount");
+
   r = &kmem.runs[(V2P(v) / PGSIZE)];
-  //cprintf("%p inc_refcount before->after: %d", v, r->refcount);
+
   __sync_add_and_fetch(&r->refcount, 1);
-  //cprintf("->%d\n", r->refcount);
 }
 
 void
 dec_refcount(void *v)
 {
   struct run *r;
+
   if((uint)v % PGSIZE || (char *)v < end || V2P(v) >= PHYSTOP)
-        panic("dec_refcount");
+    panic("dec_refcount");
+
   r = &kmem.runs[(V2P(v) / PGSIZE)];
-  if(r->refcount > 0){
-    //cprintf("%p dec_refcount before->after: %d", v, r->refcount);
+
+  if(r->refcount > 0)
     __sync_sub_and_fetch(&r->refcount, 1);
-    //cprintf("->%d\n", r->refcount);
-  } else {
+  else
     cprintf("%p dec_refcount already 0: %d\n", v, r->refcount);
-  }
 }
 
 int
 get_refcount(void *v)
 {
   struct run *r;
+
   if((uint)v % PGSIZE || (char *)v < end || V2P(v) >= PHYSTOP)
-        panic("get_refcount");
+    panic("get_refcount");
+
   r = &kmem.runs[V2P(v) / PGSIZE];
+
   return r->refcount;
 }
 

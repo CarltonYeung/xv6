@@ -3,9 +3,6 @@
 #include "user.h"
 
 int main(void) {
-  char* np = 0;
-
-  *np += 1;
-
+  *(char *)0 += 1;
   exit();
 }

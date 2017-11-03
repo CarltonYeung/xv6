@@ -361,7 +361,7 @@ cowuvm(pde_t *pgdir, uint sz)
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("cowuvm: pte should exist");
-    if(!(*pte & PTE_P))
+    if(!(*pte & PTE_P) && i != 0)
       panic("cowuvm: page not present");
 
     pa = PTE_ADDR(*pte);
@@ -378,6 +378,11 @@ cowuvm(pde_t *pgdir, uint sz)
     if(mappages(my_pgdir, (void *) i, PGSIZE, pa, flags) < 0){
       freevm(my_pgdir);
       return 0;
+    }
+
+    if((void *) i == 0){
+      *pte &= ~PTE_P;
+      invlpg((void *) i);
     }
 
     inc_refcount((void *) P2V(pa));
@@ -400,11 +405,17 @@ cow_handler()
   uint pa, flags;
   char *mem;
 
+  if(pfla == 0 && (tf->err & FEC_U)){
+    cprintf("User tried to access address 0\n");
+    goto freeandkill;
+  }
+
   if(tf->err & FEC_WR){ // Page fault was caused by write (both kernel and user)
     if((pte = walkpgdir(pgdir, (void *) pfla, 0)) == 0)
       panic("cow_handler: pte should exist");
-    if(!(*pte & PTE_P))
+    if(!(*pte & PTE_P)){
       panic("cow_handler: page not present");
+    }
 
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
