@@ -5,7 +5,8 @@
 int main(void) {
   char* np = 0;
 
-  printf(1, "%s\n", np);
+  // Read the first page of user virtual memory
+  write(1, np, 4096);
 
   exit();
 }
