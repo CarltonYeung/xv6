@@ -548,6 +548,7 @@ allocvdso(pde_t *pgdir, struct proc *p) {
 
   // increment the reference counter because the page is mapped to a new address space
   // YOUR CODE HERE...
+  inc_refcount(vdso_text_page);
 
 
 
