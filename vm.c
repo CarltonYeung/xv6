@@ -547,7 +547,6 @@ allocvdso(pde_t *pgdir, struct proc *p) {
     goto fail;
 
   // increment the reference counter because the page is mapped to a new address space
-  // YOUR CODE HERE...
   inc_refcount(vdso_text_page);
 
 
@@ -555,13 +554,18 @@ allocvdso(pde_t *pgdir, struct proc *p) {
   // STEP 2: mapping data page for vdso_getpid()
   // allocate a physical page to hold pid
   // there will be a *different* page for each process
-  // YOUR CODE HERE...
+  vdso_pid_page_t *vdso_pid_page;
+  vdso_pid_page = (vdso_pid_page_t *)kalloc();
+  if (! vdso_pid_page)
+    goto fail;
+  memset(vdso_pid_page, 0, PGSIZE);
 
   // write the pid to this page
-  // YOUR CODE HERE...
+  vdso_pid_page->pid = myproc()->pid;
 
   // map the page at the correct address in the user-mode address space (as read-only)
-  // YOUR CODE HERE...
+  if (mappages(pgdir, (void *)(VDSOTEXT + VDSO_GETPID*PGSIZE), PGSIZE, V2P(vdso_pid_page), PTE_U) < 0)
+    goto fail;
 
 
 
@@ -576,10 +580,11 @@ allocvdso(pde_t *pgdir, struct proc *p) {
   }
 
   // map the page at the correct address in the user-mode address space (as read-only)
-  // YOUR CODE HERE...
+  if (mappages(pgdir, (void *)(VDSOTEXT + VDSO_GETTICKS*PGSIZE), PGSIZE, V2P(vdso_ticks_page), PTE_U) < 0)
+    goto fail;
 
   // increment the reference counter because the page is mapped to a new address space
-  // YOUR CODE HERE...
+  inc_refcount(vdso_ticks_page);
 
   return 0;
 
