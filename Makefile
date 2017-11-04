@@ -196,6 +196,7 @@ UPROGS=\
 	_np_read\
 	_np_write\
 	_vdsotest\
+	_stacktest\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)

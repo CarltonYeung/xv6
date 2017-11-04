@@ -422,7 +422,7 @@ cow_handler()
 
     if(!(flags & PTE_COW)){
       cprintf("cow_handler: not a COW page\n");
-      goto freeandkill;
+      goto kill;
     }
 
     if(get_refcount((void *) P2V(pa)) > 1){
