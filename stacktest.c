@@ -2,20 +2,20 @@
 #include "stat.h"
 #include "user.h"
 
-int fibonacci(int);
+void foo(int);
 
 void stack_overflow_test(void) {
-  int num = 2147483647;
-
-  fibonacci(num);
+  foo(10000);
 }
 
-int fibonacci(int num) {
-  if (0 == num)
-    return 0;
-  if (1 == num)
-    return 1;
-  return fibonacci(num - 1) + fibonacci(num - 2);
+void foo(int num) {
+  if (num > 0) {
+    int x[1024];
+    x[0] = 0;
+    x[0]++;
+
+    foo(num - 1);
+  }
 }
 
 int main(void) {

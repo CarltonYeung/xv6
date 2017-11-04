@@ -63,26 +63,17 @@ exec(char *path, char **argv)
   // Set up the stack
   sz = PGROUNDUP(sz);
 
-  // Save the top of "stack VMA" (the guard page when stack is maxed)
-  curproc->ustack_max_top = sz;
-
-  // Set aside MAX_STACK + PGSIZE bytes for the stack
-  sz = sz + MAX_STACK + PGSIZE - 2 * PGSIZE;
+//  curproc->stack_VMA_top = sz;
+//  curproc->stack_VMA_bottom = curproc->stack_VMA_top + MAX_STACK + PGSIZE;
+//  curproc->stack_VMA_guard = curproc->stack_VMA_bottom - 2 * PGSIZE;
+//  sz = curproc->stack_VMA_guard;
 
   // Allocate two pages.
   // Make the first inaccessible.  Use the second as the user stack.
   if((sz = allocuvm(pgdir, sz, sz + 2 * PGSIZE)) == 0)
     goto bad;
   clearpteu(pgdir, (char *)(sz - 2 * PGSIZE));
-
   sp = sz;
-
-  // Save the bottom of "stack VMA" (ustack_bottom - 1 = first byte of stack)
-  curproc->ustack_bottom = sp;
-
-  // Save the current top of the stack (current guard page)
-  // so we can grow the stack when a page fault is for an address in this guard page
-  curproc->ustack_guard = sz - 2 * PGSIZE;
 
   // Push argument strings, prepare rest of stack in ustack.
   for(argc = 0; argv[argc]; argc++) {

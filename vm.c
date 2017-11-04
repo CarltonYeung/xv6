@@ -359,15 +359,21 @@ cowuvm(pde_t *pgdir, uint sz)
     return 0;
 
   for(i = 0; i < sz; i += PGSIZE){
+
+    if (i >= myproc()->stack_VMA_top && i < myproc()->stack_VMA_guard)
+      continue;
+
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("cowuvm: pte should exist");
-    if(!(*pte & PTE_P) && i != 0)
+    if(!(*pte & PTE_P) && i != 0) {
+      cprintf("pid = %d\n", myproc()->pid);
       panic("cowuvm: page not present");
+    }
 
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
 
-    if(flags & PTE_W){ // If writeable, convert to read-only and PTE_COW
+    if (flags & PTE_W) { // If writeable, convert to read-only and PTE_COW
       flags &= ~PTE_W;
       flags |= PTE_COW;
       *pte = pa | flags;
@@ -380,9 +386,10 @@ cowuvm(pde_t *pgdir, uint sz)
       return 0;
     }
 
-    if((void *) i == 0){
-      *pte &= ~PTE_P;
-      invlpg((void *) i);
+    if (i == 0) {
+      if((pte = walkpgdir(my_pgdir, (void *) 0, 0)) == 0)
+        panic("cowuvm: pte should exist");
+      *pte = *pte & ~PTE_P;
     }
 
     inc_refcount((void *) P2V(pa));
@@ -404,11 +411,6 @@ cow_handler()
   pte_t *pte;
   uint pa, flags;
   char *mem;
-
-  if(pfla == 0 && (tf->err & FEC_U)){
-    cprintf("User tried to access address 0\n");
-    goto freeandkill;
-  }
 
   if(tf->err & FEC_WR){ // Page fault was caused by write (both kernel and user)
     if((pte = walkpgdir(pgdir, (void *) pfla, 0)) == 0)
