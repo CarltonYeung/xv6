@@ -420,7 +420,6 @@ cow_handler()
   pte_t *pte;
   uint pa, flags;
   char *mem;
-  uint sz;
 
   if (pfla == 0 && (tf->err & FEC_U)) {
     if (tf->err & FEC_WR)
@@ -433,27 +432,40 @@ cow_handler()
   if(tf->err & FEC_WR){ // Page fault was caused by write (both kernel and user)
     if((pte = walkpgdir(pgdir, (void *) pfla, 0)) == 0)
       panic("cow_handler: pte should exist");
-    if(!(*pte & PTE_P))
-      panic("cow_handler: page not present");
+    if(!(*pte & PTE_P)) {
+      if (pfla < curproc->stack_VMA_top || pfla > curproc->stack_VMA_guard + PGSIZE)
+        panic("cow_handler: page not present");
+    }
 
-    // Grow the stack
-    if (pfla >= curproc->stack_VMA_guard && pfla < curproc->stack_VMA_guard + PGSIZE) {
-      if (curproc->stack_VMA_guard == curproc->stack_VMA_top) {
-        cprintf("stack is maxed out\n");
-        goto kill;
+    // If trying to write within stack VMA space, we may have to grow the stack
+    if (pfla >= curproc->stack_VMA_top && pfla < curproc->stack_VMA_guard + PGSIZE) {
+
+      // Grow the stack by as much as needed, as long as there is space.
+      // Currently grows one page at a time, so not very efficient.
+      while (pfla < curproc->stack_VMA_guard + PGSIZE &&
+          curproc->stack_VMA_guard > curproc->stack_VMA_top) {
+
+        // Convert old guard page to usable stack space
+        if ((pte = walkpgdir(pgdir, (void *)curproc->stack_VMA_guard, 0)) == 0)
+          panic("cow_handler: guard page pte should exist");
+        if (!(*pte & PTE_P))
+          panic("cow_handler: guard page should be present");
+
+        *pte = *pte | PTE_U;
+        invlpg((void *)pfla);
+        memset(P2V(PTE_ADDR(*pte)), 0, PGSIZE);
+
+        // New guard page
+        curproc->stack_VMA_guard -= PGSIZE;
+        if(allocuvm(pgdir, curproc->stack_VMA_guard, curproc->stack_VMA_guard + PGSIZE) == 0)
+          goto kill;
+        clearpteu(pgdir, (char *)(curproc->stack_VMA_guard));
       }
 
-      // New guard page
-      sz = curproc->stack_VMA_guard - PGSIZE;
-      if((sz = allocuvm(pgdir, sz, sz + PGSIZE)) == 0)
+      if (curproc->stack_VMA_guard == curproc->stack_VMA_top) {
+        cprintf("cow_handler: ran out of stack space\n");
         goto kill;
-      clearpteu(pgdir, (char *)(sz - PGSIZE));
-      curproc->stack_VMA_guard = curproc->stack_VMA_guard - PGSIZE;
-
-      // Convert previous guard page to usable stack space
-      *pte = *pte | PTE_U;
-      invlpg((void *)pfla);
-      memset(P2V(PTE_ADDR(*pte)), 0, PGSIZE);
+      }
 
       return;
     }
