@@ -3,6 +3,7 @@
 #include "user.h"
 
 int main(void) {
-  *(char *)0 += 1;
+  char *np = 0;
+  *np = 'c';
   exit();
 }

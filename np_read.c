@@ -3,6 +3,7 @@
 #include "user.h"
 
 int main(void) {
-  write(1, (void *)0, 4096);
+  char *np = 0;
+  printf(1, "%s\n", *np);
   exit();
 }

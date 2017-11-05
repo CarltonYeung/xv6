@@ -63,10 +63,17 @@ exec(char *path, char **argv)
   // Set up the stack
   sz = PGROUNDUP(sz);
 
-//  curproc->stack_VMA_top = sz;
-//  curproc->stack_VMA_bottom = curproc->stack_VMA_top + MAX_STACK + PGSIZE;
-//  curproc->stack_VMA_guard = curproc->stack_VMA_bottom - 2 * PGSIZE;
-//  sz = curproc->stack_VMA_guard;
+  curproc->stack_VMA_top = sz;
+//  cprintf("\ttop = %d\n", curproc->stack_VMA_top);
+
+  curproc->stack_VMA_bottom = curproc->stack_VMA_top + MAX_STACK + PGSIZE;
+//  cprintf("\tbottom = %d\n", curproc->stack_VMA_bottom);
+
+  curproc->stack_VMA_guard = curproc->stack_VMA_bottom - 2 * PGSIZE;
+//  cprintf("\tguard = %d\n", curproc->stack_VMA_guard);
+
+  sz = curproc->stack_VMA_guard;
+//  cprintf("\tsz (== guard) = %d\n", sz);
 
   // Allocate two pages.
   // Make the first inaccessible.  Use the second as the user stack.
@@ -74,6 +81,8 @@ exec(char *path, char **argv)
     goto bad;
   clearpteu(pgdir, (char *)(sz - 2 * PGSIZE));
   sp = sz;
+
+//  cprintf("\tsz (== bottom) = %d\n", sz);
 
   // Push argument strings, prepare rest of stack in ustack.
   for(argc = 0; argv[argc]; argc++) {

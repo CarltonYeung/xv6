@@ -360,13 +360,17 @@ cowuvm(pde_t *pgdir, uint sz)
 
   for(i = 0; i < sz; i += PGSIZE){
 
-    if (i >= myproc()->stack_VMA_top && i < myproc()->stack_VMA_guard)
-      continue;
+//    if (i >= myproc()->stack_VMA_top && i < myproc()->stack_VMA_guard)
+//      continue;
 
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("cowuvm: pte should exist");
     if(!(*pte & PTE_P) && i != 0) {
-      cprintf("pid = %d\n", myproc()->pid);
+      if (i >= myproc()->stack_VMA_top && i < myproc()->stack_VMA_guard)
+        continue;
+      cprintf("\ttop = %d\n", myproc()->stack_VMA_top);
+      cprintf("\tbottom = %d\n", myproc()->stack_VMA_bottom);
+      cprintf("\ti = %d\n", i);
       panic("cowuvm: page not present");
     }
 
@@ -386,9 +390,13 @@ cowuvm(pde_t *pgdir, uint sz)
       return 0;
     }
 
+    // Null-pointer
+    // Set child's pte to ~PTE_P
     if (i == 0) {
-      if((pte = walkpgdir(my_pgdir, (void *) 0, 0)) == 0)
-        panic("cowuvm: pte should exist");
+      if((pte = walkpgdir(my_pgdir, (void *)0, 0)) == 0)
+        panic("cowuvm: child's pte should exist");
+      if(!(*pte & PTE_P))
+        panic("cowuvm: child's page not present");
       *pte = *pte & ~PTE_P;
     }
 
@@ -411,6 +419,28 @@ cow_handler()
   pte_t *pte;
   uint pa, flags;
   char *mem;
+  uint sz;
+
+  if (pfla >= curproc->stack_VMA_guard && pfla < curproc->stack_VMA_guard + PGSIZE) {
+    if (curproc->stack_VMA_guard == curproc->stack_VMA_top) {
+      cprintf("stack is maxed out\n");
+      goto freeandkill;
+    }
+
+    // new guard page
+    sz = curproc->stack_VMA_guard - PGSIZE;
+    if((sz = allocuvm(pgdir, sz, sz + PGSIZE)) == 0)
+        goto freeandkill;
+    clearpteu(pgdir, (char *)(sz - PGSIZE));
+    curproc->stack_VMA_guard = curproc->stack_VMA_guard - PGSIZE;
+
+    if ((pte = walkpgdir(pgdir, (void *)curproc->stack_VMA_guard + PGSIZE, 0)) == 0)
+      panic("cow_handler: stack: pte should exist");
+    *pte = *pte | PTE_U;
+    invlpg((void *)pfla);
+
+    return;
+  }
 
   if(tf->err & FEC_WR){ // Page fault was caused by write (both kernel and user)
     if((pte = walkpgdir(pgdir, (void *) pfla, 0)) == 0)

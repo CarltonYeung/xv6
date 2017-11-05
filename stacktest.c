@@ -5,17 +5,20 @@
 void foo(int);
 
 void stack_overflow_test(void) {
-  foo(10000);
+  // 260 * (sizeof(int) * 1024) = ~1MB stack space
+  // program should run out of stack space before num == 0
+  int num = 0;
+  foo(num);
 }
 
 void foo(int num) {
-  if (num > 0) {
-    int x[1024];
-    x[0] = 0;
-    x[0]++;
+  printf(1, "stack page = %d\n", num);
 
-    foo(num - 1);
-  }
+  int x[1024]; // ~PGSIZE stack space
+  x[0] = 0; // bypass compiler warnings
+  x[0]++; // bypass compiler warnings
+
+  foo(num + 1);
 }
 
 int main(void) {
