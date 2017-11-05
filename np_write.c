@@ -3,7 +3,10 @@
 #include "user.h"
 
 int main(void) {
-  char *np = 0;
-  *np = 'c';
+  int *np = 0;
+  *np = 306;
+
+  printf(1, "This should never print.\n");
+
   exit();
 }

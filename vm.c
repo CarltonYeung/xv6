@@ -245,6 +245,15 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       kfree(mem);
       return 0;
     }
+
+    // Support for null-pointer detection
+    if (a == 0) {
+      pte_t *pte = walkpgdir(pgdir, (void *)0, 0);
+      if (!pte)
+        panic("allocuvm: pte should exist");
+      *pte = *pte & ~PTE_P;
+      invlpg((void *)0);
+    }
   }
   return newsz;
 }
@@ -264,6 +273,10 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 
   a = PGROUNDUP(newsz);
   for(; a  < oldsz; a += PGSIZE){
+    // Some pages in stack VMA may not have been allocated yet
+    if (a >= myproc()->stack_VMA_top && a < myproc()->stack_VMA_guard)
+      continue;
+
     pte = walkpgdir(pgdir, (char*)a, 0);
     if(!pte)
       a = PGADDR(PDX(a) + 1, 0, 0) - PGSIZE;
@@ -359,15 +372,13 @@ cowuvm(pde_t *pgdir, uint sz)
     return 0;
 
   for(i = 0; i < sz; i += PGSIZE){
-
-//    if (i >= myproc()->stack_VMA_top && i < myproc()->stack_VMA_guard)
-//      continue;
+    // Some pages in stack VMA may not have been allocated yet
+    if (i >= myproc()->stack_VMA_top && i < myproc()->stack_VMA_guard)
+      continue;
 
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("cowuvm: pte should exist");
-    if(!(*pte & PTE_P) && i != 0) {
-      if (i >= myproc()->stack_VMA_top && i < myproc()->stack_VMA_guard)
-        continue;
+    if(!(*pte & PTE_P) && i > 0) {
       cprintf("\ttop = %d\n", myproc()->stack_VMA_top);
       cprintf("\tbottom = %d\n", myproc()->stack_VMA_bottom);
       cprintf("\ti = %d\n", i);
@@ -388,16 +399,6 @@ cowuvm(pde_t *pgdir, uint sz)
     if(mappages(my_pgdir, (void *) i, PGSIZE, pa, flags) < 0){
       freevm(my_pgdir);
       return 0;
-    }
-
-    // Null-pointer
-    // Set child's pte to ~PTE_P
-    if (i == 0) {
-      if((pte = walkpgdir(my_pgdir, (void *)0, 0)) == 0)
-        panic("cowuvm: child's pte should exist");
-      if(!(*pte & PTE_P))
-        panic("cowuvm: child's page not present");
-      *pte = *pte & ~PTE_P;
     }
 
     inc_refcount((void *) P2V(pa));
@@ -421,32 +422,40 @@ cow_handler()
   char *mem;
   uint sz;
 
-  if (pfla >= curproc->stack_VMA_guard && pfla < curproc->stack_VMA_guard + PGSIZE) {
-    if (curproc->stack_VMA_guard == curproc->stack_VMA_top) {
-      cprintf("stack is maxed out\n");
-      goto freeandkill;
-    }
-
-    // new guard page
-    sz = curproc->stack_VMA_guard - PGSIZE;
-    if((sz = allocuvm(pgdir, sz, sz + PGSIZE)) == 0)
-        goto freeandkill;
-    clearpteu(pgdir, (char *)(sz - PGSIZE));
-    curproc->stack_VMA_guard = curproc->stack_VMA_guard - PGSIZE;
-
-    if ((pte = walkpgdir(pgdir, (void *)curproc->stack_VMA_guard + PGSIZE, 0)) == 0)
-      panic("cow_handler: stack: pte should exist");
-    *pte = *pte | PTE_U;
-    invlpg((void *)pfla);
-
-    return;
+  if (pfla == 0 && (tf->err & FEC_U)) {
+    if (tf->err & FEC_WR)
+      cprintf("cow_handler: Writing to null-pointer\n");
+    else
+      cprintf("cow_handler: Reading from null-pointer\n");
+    goto kill;
   }
 
   if(tf->err & FEC_WR){ // Page fault was caused by write (both kernel and user)
     if((pte = walkpgdir(pgdir, (void *) pfla, 0)) == 0)
       panic("cow_handler: pte should exist");
-    if(!(*pte & PTE_P)){
+    if(!(*pte & PTE_P))
       panic("cow_handler: page not present");
+
+    // Grow the stack
+    if (pfla >= curproc->stack_VMA_guard && pfla < curproc->stack_VMA_guard + PGSIZE) {
+      if (curproc->stack_VMA_guard == curproc->stack_VMA_top) {
+        cprintf("stack is maxed out\n");
+        goto kill;
+      }
+
+      // New guard page
+      sz = curproc->stack_VMA_guard - PGSIZE;
+      if((sz = allocuvm(pgdir, sz, sz + PGSIZE)) == 0)
+        goto kill;
+      clearpteu(pgdir, (char *)(sz - PGSIZE));
+      curproc->stack_VMA_guard = curproc->stack_VMA_guard - PGSIZE;
+
+      // Convert previous guard page to usable stack space
+      *pte = *pte | PTE_U;
+      invlpg((void *)pfla);
+      memset(P2V(PTE_ADDR(*pte)), 0, PGSIZE);
+
+      return;
     }
 
     pa = PTE_ADDR(*pte);
@@ -498,6 +507,7 @@ cow_handler()
           "eip 0x%x addr 0x%x--kill proc\n",
           myproc()->pid, myproc()->name, tf->trapno,
           tf->err, cpuid(), tf->eip, rcr2());
+
       goto kill;
     }
 

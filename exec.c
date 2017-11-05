@@ -64,15 +64,14 @@ exec(char *path, char **argv)
   sz = PGROUNDUP(sz);
 
   curproc->stack_VMA_top = sz;
-//  cprintf("\ttop = %d\n", curproc->stack_VMA_top);
-
   curproc->stack_VMA_bottom = curproc->stack_VMA_top + MAX_STACK + PGSIZE;
-//  cprintf("\tbottom = %d\n", curproc->stack_VMA_bottom);
-
   curproc->stack_VMA_guard = curproc->stack_VMA_bottom - 2 * PGSIZE;
-//  cprintf("\tguard = %d\n", curproc->stack_VMA_guard);
 
   sz = curproc->stack_VMA_guard;
+
+//  cprintf("\ttop = %d\n", curproc->stack_VMA_top);
+//  cprintf("\tbottom = %d\n", curproc->stack_VMA_bottom);
+//  cprintf("\tguard = %d\n", curproc->stack_VMA_guard);
 //  cprintf("\tsz (== guard) = %d\n", sz);
 
   // Allocate two pages.
