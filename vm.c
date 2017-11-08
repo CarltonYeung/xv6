@@ -247,12 +247,13 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     }
 
     // Support for null-pointer detection
-    if (a == 0) {
+    if (a == 0 && myproc()->pid) {
       pte_t *pte = walkpgdir(pgdir, (void *)0, 0);
       if (!pte)
         panic("allocuvm: pte should exist");
       *pte = *pte & ~PTE_P;
       invlpg((void *)0);
+      clearpteu(pgdir, (char *)0);
     }
   }
   return newsz;
@@ -274,8 +275,8 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   a = PGROUNDUP(newsz);
   for(; a  < oldsz; a += PGSIZE){
     // Some pages in stack VMA may not have been allocated yet
-    if (a >= myproc()->stack_VMA_top && a < myproc()->stack_VMA_guard)
-      continue;
+//    if (a >= myproc()->stack_VMA_top && a < myproc()->stack_VMA_guard)
+//      continue;
 
     pte = walkpgdir(pgdir, (char*)a, 0);
     if(!pte)
@@ -372,17 +373,14 @@ cowuvm(pde_t *pgdir, uint sz)
     return 0;
 
   for(i = 0; i < sz; i += PGSIZE){
-    // Some pages in stack VMA may not have been allocated yet
-    if (i >= myproc()->stack_VMA_top && i < myproc()->stack_VMA_guard)
-      continue;
 
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("cowuvm: pte should exist");
     if(!(*pte & PTE_P) && i > 0) {
-      cprintf("\ttop = %d\n", myproc()->stack_VMA_top);
-      cprintf("\tbottom = %d\n", myproc()->stack_VMA_bottom);
-      cprintf("\ti = %d\n", i);
-      panic("cowuvm: page not present");
+      if (i >= myproc()->stack_VMA_top && i < myproc()->stack_VMA_guard)
+        continue;
+      else
+        panic("cowuvm: page not present");
     }
 
     pa = PTE_ADDR(*pte);
@@ -421,11 +419,8 @@ cow_handler()
   uint pa, flags;
   char *mem;
 
-  if (pfla == 0 && (tf->err & FEC_U)) {
-    if (tf->err & FEC_WR)
-      cprintf("cow_handler: Writing to null-pointer\n");
-    else
-      cprintf("cow_handler: Reading from null-pointer\n");
+  if (pfla == 0 && curproc->pid) {
+    cprintf("cow_handler: null pointer de-reference\n");
     goto kill;
   }
 
@@ -437,35 +432,28 @@ cow_handler()
         panic("cow_handler: page not present");
     }
 
-    // If trying to write within stack VMA space, we may have to grow the stack
-    if (pfla >= curproc->stack_VMA_top && pfla < curproc->stack_VMA_guard + PGSIZE) {
-
-      // Grow the stack by as much as needed, as long as there is space.
-      // Currently grows one page at a time, so not very efficient.
-      while (pfla < curproc->stack_VMA_guard + PGSIZE &&
-          curproc->stack_VMA_guard > curproc->stack_VMA_top) {
-
-        // Convert old guard page to usable stack space
-        if ((pte = walkpgdir(pgdir, (void *)curproc->stack_VMA_guard, 0)) == 0)
-          panic("cow_handler: guard page pte should exist");
-        if (!(*pte & PTE_P))
-          panic("cow_handler: guard page should be present");
-
-        *pte = *pte | PTE_U;
-        invlpg((void *)pfla);
-        memset(P2V(PTE_ADDR(*pte)), 0, PGSIZE);
-
-        // New guard page
-        curproc->stack_VMA_guard -= PGSIZE;
-        if(allocuvm(pgdir, curproc->stack_VMA_guard, curproc->stack_VMA_guard + PGSIZE) == 0)
-          goto kill;
-        clearpteu(pgdir, (char *)(curproc->stack_VMA_guard));
-      }
+    // If trying to write within guard page, we may have to grow the stack
+    if (pfla >= curproc->stack_VMA_guard && pfla < curproc->stack_VMA_guard + PGSIZE) {
 
       if (curproc->stack_VMA_guard == curproc->stack_VMA_top) {
         cprintf("cow_handler: ran out of stack space\n");
         goto kill;
       }
+
+      // Convert old guard page to usable stack space
+      if ((pte = walkpgdir(pgdir, (void *)curproc->stack_VMA_guard, 0)) == 0)
+        panic("cow_handler: guard page pte should exist");
+      if (!(*pte & PTE_P))
+        panic("cow_handler: guard page should be present");
+
+      *pte = *pte | PTE_U;
+      invlpg((void *)pfla);
+
+      // New guard page
+      curproc->stack_VMA_guard -= PGSIZE;
+      if(allocuvm(pgdir, curproc->stack_VMA_guard, curproc->stack_VMA_guard + PGSIZE) == 0)
+        goto kill;
+      clearpteu(pgdir, (char *)(curproc->stack_VMA_guard));
 
       return;
     }
