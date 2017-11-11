@@ -224,6 +224,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
   char *mem;
   uint a;
+  pte_t *pte;
 
   if(newsz >= KERNBASE)
     return 0;
@@ -245,17 +246,14 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       kfree(mem);
       return 0;
     }
-
-    // Support for null-pointer detection
-    if (a == 0 && myproc()->pid) {
-      pte_t *pte = walkpgdir(pgdir, (void *)0, 0);
-      if (!pte)
-        panic("allocuvm: pte should exist");
-      *pte = *pte & ~PTE_P;
-      invlpg((void *)0);
-      clearpteu(pgdir, (char *)0);
-    }
   }
+
+  pte = walkpgdir(pgdir, (void *)0, 0);
+  if (!pte)
+    panic("allocuvm: page 0 pte should exist");
+
+  *pte &= ~PTE_P;
+
   return newsz;
 }
 
@@ -274,10 +272,6 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 
   a = PGROUNDUP(newsz);
   for(; a  < oldsz; a += PGSIZE){
-    // Some pages in stack VMA may not have been allocated yet
-//    if (a >= myproc()->stack_VMA_top && a < myproc()->stack_VMA_guard)
-//      continue;
-
     pte = walkpgdir(pgdir, (char*)a, 0);
     if(!pte)
       a = PGADDR(PDX(a) + 1, 0, 0) - PGSIZE;
@@ -363,46 +357,54 @@ bad:
  * physical pages.
  */
 pde_t*
-cowuvm(pde_t *pgdir, uint sz)
+cowuvm(pde_t *parent_pgdir, uint sz)
 {
-  pde_t *my_pgdir;
+  pde_t *child_pgdir;
   pte_t *pte;
   uint i, pa, flags;
 
-  if((my_pgdir = setupkvm()) == 0)
+  child_pgdir = setupkvm();
+  if (!child_pgdir)
     return 0;
 
-  for(i = 0; i < sz; i += PGSIZE){
+  for (i = 0; i < sz; i += PGSIZE) {
+    if (i >= myproc()->ustack_top && i < myproc()->ustack_guard)
+      continue;
 
-    if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+    pte = walkpgdir(parent_pgdir, (void *)i, 0);
+    if (!pte)
       panic("cowuvm: pte should exist");
-    if(!(*pte & PTE_P) && i > 0) {
-      if (i >= myproc()->ustack_top && i < myproc()->ustack_guard)
-        continue;
-      else
-        panic("cowuvm: page not present");
-    }
+
+    if (!(*pte & PTE_P) && i != 0)
+      panic("cowuvm: page not present");
 
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
 
-    if (flags & PTE_W) { // If writeable, convert to read-only and PTE_COW
+    if (flags & PTE_W) {
       flags &= ~PTE_W;
       flags |= PTE_COW;
       *pte = pa | flags;
-      invlpg((void *) i); // Shoot down TLB
+      invlpg((void *)i);
     }
 
-    // Map virtual address to the same physical address as its parent's
-    if(mappages(my_pgdir, (void *) i, PGSIZE, pa, flags) < 0){
-      freevm(my_pgdir);
+    if (mappages(child_pgdir, (void *)i, PGSIZE, pa, flags) < 0) {
+      freevm(child_pgdir);
       return 0;
     }
 
-    inc_refcount((void *) P2V(pa));
+    if (0 == i) {
+      pte = walkpgdir(child_pgdir, (void *)0, 0);
+      if (!pte)
+        panic ("cowuvm: page 0 pte should exist");
+
+      *pte &= ~PTE_P;
+    }
+
+    inc_refcount((void *)P2V(pa));
   }
 
-  return my_pgdir;
+  return child_pgdir;
 }
 
 int
@@ -450,7 +452,7 @@ cow_handler()
   uint pa, flags;
   char *mem;
 
-  if (pfla == 0 && curproc->pid) {
+  if (pfla == 0) {
     cprintf("cow_handler: null pointer de-reference\n");
     goto kill;
   }
@@ -460,6 +462,11 @@ cow_handler()
     goto kill;
   }
 
+  if ((pte = walkpgdir(pgdir, (void *)pfla, 0)) == 0)
+    panic("cow_handler: pte should exist");
+  if (!(*pte & PTE_P))
+    panic("cow_handler: page not present");
+
   if (tf->err & FEC_WR) {
     if (pfla >= curproc->ustack_guard && pfla < curproc->ustack_guard + PGSIZE) {
       if (grow_ustack() < 0)
@@ -467,12 +474,6 @@ cow_handler()
       else
         return;
     }
-
-    if ((pte = walkpgdir(pgdir, (void *) pfla, 0)) == 0)
-      panic("cow_handler: pte should exist");
-
-    if (!(*pte & PTE_P))
-      panic("cow_handler: page not present");
 
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
@@ -485,47 +486,33 @@ cow_handler()
     if (get_refcount((void *)P2V(pa)) > 1) {
       mem = kalloc();
       if (!mem) {
-        cprintf("cow_handler: kalloc returned 0");
-        goto freeandkill;
+        freevm(pgdir);
+        goto kill;
       }
 
       memmove((void *)mem, (void *)P2V(pa), PGSIZE);
-
       dec_refcount((void *)P2V(pa));
-
       pa = V2P(mem);
       flags |= PTE_W;
       flags &= ~PTE_COW;
       *pte = pa | flags;
-      invlpg((void *)pfla);
 
     } else {
-      if(get_refcount((void *) P2V(pa)) < 1){
-        cprintf("cow handler: writing to page with refcount == 0");
-        goto freeandkill;
-      }
+      if (get_refcount((void *)P2V(pa)) < 1)
+        panic("cow handler: writing to page with refcount == 0");
 
       flags |= PTE_W;
       flags &= ~PTE_COW;
       *pte = pa | flags;
-      invlpg((void *) P2V(pa));
     }
-  } else {
-    if(tf->err & FEC_U){
-      // In user space, assume process misbehaved.
-      cprintf("pid %d %s: trap %d err %d on cpu %d "
-          "eip 0x%x addr 0x%x--kill proc\n",
-          myproc()->pid, myproc()->name, tf->trapno,
-          tf->err, cpuid(), tf->eip, rcr2());
 
-      goto kill;
-    }
+    invlpg((void *)pfla);
+    return;
+
+  } else {
+    goto kill;
   }
 
-  return;
-
-  freeandkill:
-  freevm(pgdir);
   kill:
   curproc->killed = 1;
   return;
