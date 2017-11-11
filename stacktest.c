@@ -2,14 +2,6 @@
 #include "stat.h"
 #include "user.h"
 
-void foo(int);
-
-void stack_overflow_test(void) {
-  // program should be terminated after using all the stack space
-  int num = 1;
-  foo(num);
-}
-
 void foo(int num) {
   printf(1, "page %d\n", num);
 
@@ -19,6 +11,15 @@ void foo(int num) {
   x[0]++; // bypass compiler warnings
 
   foo(num + numOfPages);
+}
+
+void stack_overflow_test(void) {
+  printf(1, "\nstack_overflow_test\n");
+
+  // program should be terminated after using all the stack space
+  int num = 1;
+  foo(num);
+  printf(1, "This should never print\n");
 }
 
 int main(void) {

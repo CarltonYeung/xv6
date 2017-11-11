@@ -187,9 +187,9 @@ fork(void)
     return -1;
   }
 
-  np->stack_VMA_bottom = curproc->stack_VMA_bottom;
-  np->stack_VMA_top = curproc->stack_VMA_top;
-  np->stack_VMA_guard = curproc->stack_VMA_guard;
+  np->ustack_bottom = curproc->ustack_bottom;
+  np->ustack_top = curproc->ustack_top;
+  np->ustack_guard = curproc->ustack_guard;
 
   // Copy process state from proc.
   // Call cowuvm() for copy-on-write functionality

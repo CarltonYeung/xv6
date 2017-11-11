@@ -48,9 +48,9 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-  uint stack_VMA_bottom;       // Bottom of the user stack
-  uint stack_VMA_top;          // Top of the user stack (max guard page)
-  uint stack_VMA_guard;        // Current top of the user stack (current guard page)
+  uint ustack_bottom;          // Bottom of the user stack
+  uint ustack_top;             // Top of the user stack (max guard page)
+  uint ustack_guard;           // Current top of the user stack (current guard page)
 };
 
 // Process memory is laid out contiguously, low addresses first:

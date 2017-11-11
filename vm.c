@@ -377,7 +377,7 @@ cowuvm(pde_t *pgdir, uint sz)
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("cowuvm: pte should exist");
     if(!(*pte & PTE_P) && i > 0) {
-      if (i >= myproc()->stack_VMA_top && i < myproc()->stack_VMA_guard)
+      if (i >= myproc()->ustack_top && i < myproc()->ustack_guard)
         continue;
       else
         panic("cowuvm: page not present");
@@ -405,6 +405,37 @@ cowuvm(pde_t *pgdir, uint sz)
   return my_pgdir;
 }
 
+int
+grow_ustack()
+{
+  struct proc *curproc = myproc();
+  pde_t *pgdir = curproc->pgdir;
+  pte_t *pte;
+
+  if (curproc->ustack_guard == curproc->ustack_top) {
+    cprintf("grow_ustack: allocated stack VMA maxed out\n");
+    return -1;
+  }
+
+  if ((pte = walkpgdir(pgdir, (void *)curproc->ustack_guard, 0)) == 0)
+    panic("grow_ustack: guard page pte should exist");
+
+  if (!(*pte & PTE_P))
+    panic("grow_ustack: guard page not present");
+
+  *pte |= FEC_U;
+  memset((void *)curproc->ustack_guard, 0, PGSIZE);
+  invlpg((void *)curproc->ustack_guard);
+
+  curproc->ustack_guard -= PGSIZE;
+  if (allocuvm(pgdir, curproc->ustack_guard, curproc->ustack_guard + PGSIZE) < 0)
+    return -1;
+
+  clearpteu(pgdir, (char *)curproc->ustack_guard);
+
+  return 0;
+}
+
 /*
  * Handle page faults for both kernel and user.
  */
@@ -413,7 +444,7 @@ cow_handler()
 {
   struct proc *curproc = myproc();
   struct trapframe *tf = curproc->tf;
-  uint pfla = rcr2();  // Page fault was caused by accessing Page Fault Linear Address
+  uint pfla = rcr2();
   pde_t *pgdir = curproc->pgdir;
   pte_t *pte;
   uint pa, flags;
@@ -424,83 +455,62 @@ cow_handler()
     goto kill;
   }
 
-  if(tf->err & FEC_WR){ // Page fault was caused by write (both kernel and user)
-    if((pte = walkpgdir(pgdir, (void *) pfla, 0)) == 0)
+  if (pfla >= curproc->ustack_top && pfla < curproc->ustack_guard) {
+    cprintf("cow_handler: reference to unallocated part of stack VMA\n");
+    goto kill;
+  }
+
+  if (tf->err & FEC_WR) {
+    if (pfla >= curproc->ustack_guard && pfla < curproc->ustack_guard + PGSIZE) {
+      if (grow_ustack() < 0)
+        goto kill;
+      else
+        return;
+    }
+
+    if ((pte = walkpgdir(pgdir, (void *) pfla, 0)) == 0)
       panic("cow_handler: pte should exist");
-    if(!(*pte & PTE_P)) {
-      if (pfla < curproc->stack_VMA_top || pfla > curproc->stack_VMA_guard + PGSIZE)
-        panic("cow_handler: page not present");
-    }
 
-    // If trying to write within guard page, we may have to grow the stack
-    if (pfla >= curproc->stack_VMA_guard && pfla < curproc->stack_VMA_guard + PGSIZE) {
-
-      if (curproc->stack_VMA_guard == curproc->stack_VMA_top) {
-        cprintf("cow_handler: ran out of stack space\n");
-        goto kill;
-      }
-
-      // Convert old guard page to usable stack space
-      if ((pte = walkpgdir(pgdir, (void *)curproc->stack_VMA_guard, 0)) == 0)
-        panic("cow_handler: guard page pte should exist");
-      if (!(*pte & PTE_P))
-        panic("cow_handler: guard page should be present");
-
-      *pte = *pte | PTE_U;
-      invlpg((void *)pfla);
-
-      // New guard page
-      curproc->stack_VMA_guard -= PGSIZE;
-      if(allocuvm(pgdir, curproc->stack_VMA_guard, curproc->stack_VMA_guard + PGSIZE) == 0)
-        goto kill;
-      clearpteu(pgdir, (char *)(curproc->stack_VMA_guard));
-
-      return;
-    }
+    if (!(*pte & PTE_P))
+      panic("cow_handler: page not present");
 
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
 
-    if(!(flags & PTE_COW)){
+    if (!(flags & PTE_COW)) {
       cprintf("cow_handler: not a COW page\n");
       goto kill;
     }
 
-    if(get_refcount((void *) P2V(pa)) > 1){
-      /* Copy the page, decrement reference count for the original physical page,
-         update the PTE for current process, and invalidate the TLB entry. */
-      if((mem = kalloc()) == 0){
+    if (get_refcount((void *)P2V(pa)) > 1) {
+      mem = kalloc();
+      if (!mem) {
         cprintf("cow_handler: kalloc returned 0");
         goto freeandkill;
       }
-      memmove((void *) mem, (void *) P2V(pa), PGSIZE);
 
-      dec_refcount((void *) P2V(pa));
+      memmove((void *)mem, (void *)P2V(pa), PGSIZE);
+
+      dec_refcount((void *)P2V(pa));
 
       pa = V2P(mem);
       flags |= PTE_W;
       flags &= ~PTE_COW;
       *pte = pa | flags;
-      invlpg((void *) pfla);
+      invlpg((void *)pfla);
+
     } else {
       if(get_refcount((void *) P2V(pa)) < 1){
         cprintf("cow handler: writing to page with refcount == 0");
         goto freeandkill;
       }
 
-      /* There is only one reference to this physical page, so update the PTE to
-         restore write permission and remove PTE_COW flag, and invalidate the TLB. */
       flags |= PTE_W;
       flags &= ~PTE_COW;
       *pte = pa | flags;
       invlpg((void *) P2V(pa));
     }
-
-    /* At this point the instruction that caused the page fault is ready
-       to be re-executed. */
-    return;
-
-  } else { // Page fault was caused by read
+  } else {
     if(tf->err & FEC_U){
       // In user space, assume process misbehaved.
       cprintf("pid %d %s: trap %d err %d on cpu %d "
@@ -510,10 +520,9 @@ cow_handler()
 
       goto kill;
     }
-
-    // Page fault was caused by kernel read
-    return;
   }
+
+  return;
 
   freeandkill:
   freevm(pgdir);
