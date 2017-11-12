@@ -1,0 +1,63 @@
+Lab 3
+by Carlton Yeung
+
+Part 1: Null Pointer Dereference
+
+In allocuvm() I turn off the PTE_P bit for page 0.
+I do the same in cowuvm() so that null pointers can be detected after forking.
+The page fault handler, cow_handler(), kills the process that tries to access page 0.
+
+The new user programs, np_read and np_write, are killed when they try to read/write page 0.
+
+
+
+Part 2: Automatic Stack Growth
+
+I added some fields in the process structure to keep track of a few memory locations:
+    1. ustack_bottom: the starting point of the stack pointer.
+    2. ustack_top: address of the maximum stack size guard page. The old stack used this as its guard page, so there was no room to grow.
+    3. ustack_guard: address of the current guard page.
+    
+In exec() I reserve 1MB of stack space without allocating all 1MB immediately. The original stack implementation allocates the stack at sz.
+I re-use the original allocuvm() call after incrementing sz by about 1MB. The stack now starts higher in the address space and has 
+enough room to grow down 1MB.
+
+cowuvm() needs to know where the stack VMA is, so the fields I added to the process structure earlier are copied to the child process 
+in fork() before calling cowuvm(). cowuvm() skips the unallocated stack VMA because those pages haven't been mapped yet.
+
+cow_handler() detects when a user process writes to the guard page and calls a new function, grow_ustack(), which handles the 
+automatic stack growth. The old guard page is converted to user-accessible stack space and a new guard page is allocated by a call 
+to allocuvm() and clearpteu() to make it inaccessible to the user.
+
+cow_handler() detects page faults in the unallocated stack VMA region and kills the user process. The stack only grows when a user process 
+writes to the guard page. If the stack cannot grow any more, the user process will be killed when it writes to the maxed-out guard page.
+
+The new user program, stacktest, is able to allocate about 250 pages (~1MB) of stack space and beyond that it is killed.
+
+
+
+Part 3: Virtual Dynamic Shared Objects
+
+I followed the instructions in the new function, allocvdso().
+
+The new user program, vdsotest, confirms that the new VDSO function calls work.
+
+
+
+Additional notes:
+
+As suggested on Blackboard, compiler optimizations are turned off because some functionality wasn't working with optimizations on.
+
+One of the usertests, validatetest(), gets killed because it tries to access forbidden regions of memory implemented in this lab.
+I commented out validatetest() because it caused usertests to be killed prematurely. Aside from this, the rest of the usertests 
+are passed.
+
+Tests from previous labs still pass:
+    1. wolfietest
+    2. forktest
+    3. cowforktest
+    4. np_read
+    5. np_write
+    6. stacktest
+    7. vdsotest
+    8. usertests minus validatetest() being killed
