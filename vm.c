@@ -224,6 +224,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
   char *mem;
   uint a;
+  pte_t *pte;
 
   if(newsz >= KERNBASE)
     return 0;
@@ -246,6 +247,13 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       return 0;
     }
   }
+
+  pte = walkpgdir(pgdir, (void *)0, 0);
+  if (!pte)
+    panic("allocuvm: page 0 pte should exist");
+
+  *pte &= ~PTE_P;
+
   return newsz;
 }
 
@@ -343,6 +351,173 @@ bad:
   return 0;
 }
 
+/*
+ * Follows similar structure to copyuvm(), but instead of allocating physical pages
+ * for user address space cowuvm() sets up the child PTEs to point to the parent's
+ * physical pages.
+ */
+pde_t*
+cowuvm(pde_t *parent_pgdir, uint sz)
+{
+  pde_t *child_pgdir;
+  pte_t *pte;
+  uint i, pa, flags;
+
+  child_pgdir = setupkvm();
+  if (!child_pgdir)
+    return 0;
+
+  for (i = 0; i < sz; i += PGSIZE) {
+    if (i >= myproc()->ustack_top && i < myproc()->ustack_guard)
+      continue;
+
+    pte = walkpgdir(parent_pgdir, (void *)i, 0);
+    if (!pte)
+      panic("cowuvm: pte should exist");
+
+    if (!(*pte & PTE_P) && i != 0)
+      panic("cowuvm: page not present");
+
+    pa = PTE_ADDR(*pte);
+    flags = PTE_FLAGS(*pte);
+
+    if (flags & PTE_W) {
+      flags &= ~PTE_W;
+      flags |= PTE_COW;
+      *pte = pa | flags;
+      invlpg((void *)i);
+    }
+
+    if (mappages(child_pgdir, (void *)i, PGSIZE, pa, flags) < 0) {
+      freevm(child_pgdir);
+      return 0;
+    }
+
+    if (0 == i) {
+      pte = walkpgdir(child_pgdir, (void *)0, 0);
+      if (!pte)
+        panic ("cowuvm: page 0 pte should exist");
+
+      *pte &= ~PTE_P;
+    }
+
+    inc_refcount((void *)P2V(pa));
+  }
+
+  return child_pgdir;
+}
+
+int
+grow_ustack()
+{
+  struct proc *curproc = myproc();
+  pde_t *pgdir = curproc->pgdir;
+  pte_t *pte;
+
+  if (curproc->ustack_guard == curproc->ustack_top) {
+    cprintf("grow_ustack: allocated stack VMA maxed out\n");
+    return -1;
+  }
+
+  if ((pte = walkpgdir(pgdir, (void *)curproc->ustack_guard, 0)) == 0)
+    panic("grow_ustack: guard page pte should exist");
+
+  if (!(*pte & PTE_P))
+    panic("grow_ustack: guard page not present");
+
+  *pte |= FEC_U;
+  memset((void *)curproc->ustack_guard, 0, PGSIZE);
+  invlpg((void *)curproc->ustack_guard);
+
+  curproc->ustack_guard -= PGSIZE;
+  if (allocuvm(pgdir, curproc->ustack_guard, curproc->ustack_guard + PGSIZE) < 0)
+    return -1;
+
+  clearpteu(pgdir, (char *)curproc->ustack_guard);
+
+  return 0;
+}
+
+/*
+ * Handle page faults for both kernel and user.
+ */
+void
+cow_handler()
+{
+  struct proc *curproc = myproc();
+  struct trapframe *tf = curproc->tf;
+  uint pfla = rcr2();
+  pde_t *pgdir = curproc->pgdir;
+  pte_t *pte;
+  uint pa, flags;
+  char *mem;
+
+  if (pfla == 0) {
+    cprintf("cow_handler: null pointer de-reference\n");
+    goto kill;
+  }
+
+  if (pfla >= curproc->ustack_top && pfla < curproc->ustack_guard) {
+    cprintf("cow_handler: reference to unallocated part of stack VMA\n");
+    goto kill;
+  }
+
+  if ((pte = walkpgdir(pgdir, (void *)pfla, 0)) == 0)
+    panic("cow_handler: pte should exist");
+  if (!(*pte & PTE_P))
+    panic("cow_handler: page not present");
+
+  if (tf->err & FEC_WR) {
+    if (pfla >= curproc->ustack_guard && pfla < curproc->ustack_guard + PGSIZE) {
+      if (grow_ustack() < 0)
+        goto kill;
+      else
+        return;
+    }
+
+    pa = PTE_ADDR(*pte);
+    flags = PTE_FLAGS(*pte);
+
+    if (!(flags & PTE_COW)) {
+      cprintf("cow_handler: not a COW page\n");
+      goto kill;
+    }
+
+    if (get_refcount((void *)P2V(pa)) > 1) {
+      mem = kalloc();
+      if (!mem) {
+        freevm(pgdir);
+        goto kill;
+      }
+
+      memmove((void *)mem, (void *)P2V(pa), PGSIZE);
+      dec_refcount((void *)P2V(pa));
+      pa = V2P(mem);
+      flags |= PTE_W;
+      flags &= ~PTE_COW;
+      *pte = pa | flags;
+
+    } else {
+      if (get_refcount((void *)P2V(pa)) < 1)
+        panic("cow handler: writing to page with refcount == 0");
+
+      flags |= PTE_W;
+      flags &= ~PTE_COW;
+      *pte = pa | flags;
+    }
+
+    invlpg((void *)pfla);
+    return;
+
+  } else {
+    goto kill;
+  }
+
+  kill:
+  curproc->killed = 1;
+  return;
+}
+
 // Map user virtual address to kernel address.
 char*
 uva2ka(pde_t *pgdir, char *uva)
@@ -410,20 +585,25 @@ allocvdso(pde_t *pgdir, struct proc *p) {
     goto fail;
 
   // increment the reference counter because the page is mapped to a new address space
-  // YOUR CODE HERE...
+  inc_refcount(vdso_text_page);
 
 
 
   // STEP 2: mapping data page for vdso_getpid()
   // allocate a physical page to hold pid
   // there will be a *different* page for each process
-  // YOUR CODE HERE...
+  vdso_pid_page_t *vdso_pid_page;
+  vdso_pid_page = (vdso_pid_page_t *)kalloc();
+  if (! vdso_pid_page)
+    goto fail;
+  memset(vdso_pid_page, 0, PGSIZE);
 
   // write the pid to this page
-  // YOUR CODE HERE...
+  vdso_pid_page->pid = myproc()->pid;
 
   // map the page at the correct address in the user-mode address space (as read-only)
-  // YOUR CODE HERE...
+  if (mappages(pgdir, (void *)(VDSOTEXT + VDSO_GETPID*PGSIZE), PGSIZE, V2P(vdso_pid_page), PTE_U) < 0)
+    goto fail;
 
 
 
@@ -438,10 +618,11 @@ allocvdso(pde_t *pgdir, struct proc *p) {
   }
 
   // map the page at the correct address in the user-mode address space (as read-only)
-  // YOUR CODE HERE...
+  if (mappages(pgdir, (void *)(VDSOTEXT + VDSO_GETTICKS*PGSIZE), PGSIZE, V2P(vdso_ticks_page), PTE_U) < 0)
+    goto fail;
 
   // increment the reference counter because the page is mapped to a new address space
-  // YOUR CODE HERE...
+  inc_refcount(vdso_ticks_page);
 
   return 0;
 

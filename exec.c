@@ -60,12 +60,21 @@ exec(char *path, char **argv)
   end_op();
   ip = 0;
 
-  // Allocate two pages at the next page boundary.
-  // Make the first inaccessible.  Use the second as the user stack.
+  // Set up the stack
   sz = PGROUNDUP(sz);
-  if((sz = allocuvm(pgdir, sz, sz + 2*PGSIZE)) == 0)
+
+  // Reserve 1MB stack space
+  curproc->ustack_top = sz;
+  curproc->ustack_bottom = curproc->ustack_top + MAX_STACK + PGSIZE;
+  curproc->ustack_guard = curproc->ustack_bottom - 2 * PGSIZE;
+
+  sz = curproc->ustack_guard;
+
+  // Allocate two pages.
+  // Make the first inaccessible.  Use the second as the user stack.
+  if((sz = allocuvm(pgdir, sz, sz + 2 * PGSIZE)) == 0)
     goto bad;
-  clearpteu(pgdir, (char*)(sz - 2*PGSIZE));
+  clearpteu(pgdir, (char *)(sz - 2 * PGSIZE));
   sp = sz;
 
   // Push argument strings, prepare rest of stack in ustack.

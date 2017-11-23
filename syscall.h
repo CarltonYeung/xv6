@@ -20,7 +20,8 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
-#define SYS_vdso_entry 22
-#define SYS_shmbrk 23
-#define SYS_futex_wait 24
-#define SYS_futex_wake 25
+#define SYS_wolfie 22
+#define SYS_vdso_entry 23
+#define SYS_shmbrk 24
+#define SYS_futex_wait 25
+#define SYS_futex_wake 26

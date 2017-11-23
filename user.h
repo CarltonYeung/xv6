@@ -29,6 +29,7 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int wolfie(void*, uint);
 void *vdso_entry(int);
 char* shmbrk(int);
 int futex_wait(int *loc, int val);

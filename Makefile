@@ -30,6 +30,7 @@ OBJS = \
 	uart.o\
 	vectors.o\
 	vm.o\
+	syswolfie.o\
 	sysvdso.o\
 
 # Cross-compiling (e.g., on Mac OS X)
@@ -80,8 +81,8 @@ AS = $(TOOLPREFIX)gas
 LD = $(TOOLPREFIX)ld
 OBJCOPY = $(TOOLPREFIX)objcopy
 OBJDUMP = $(TOOLPREFIX)objdump
-CFLAGS_BASE = -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer
-#CFLAGS_BASE = -static -fno-builtin -fno-strict-aliasing -fvar-tracking -fvar-tracking-assignments -O0 -g -Wall -MD -gdwarf-2 -m32 -Werror -fno-omit-frame-pointer
+#CFLAGS_BASE = -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer
+CFLAGS_BASE = -static -fno-builtin -fno-strict-aliasing -fvar-tracking -fvar-tracking-assignments -O0 -g -Wall -MD -gdwarf-2 -m32 -Werror -fno-omit-frame-pointer
 CFLAGS_BASE += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 CFLAGS = -fno-pic $(CFLAGS_BASE)
 CFLAGS_PIC = -fPIC $(CFLAGS_BASE)
@@ -190,8 +191,14 @@ UPROGS=\
 	_usertests\
 	_wc\
 	_zombie\
+	_wolfietest\
+	_cowforktest\
+	_np_read\
+	_np_write\
+	_vdsotest\
+	_stacktest\
 	_futextest\
-	
+
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
 
