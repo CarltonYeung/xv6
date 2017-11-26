@@ -198,6 +198,7 @@ UPROGS=\
 	_vdsotest\
 	_stacktest\
 	_futextest\
+	_shmbrktest\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)

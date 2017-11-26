@@ -93,8 +93,41 @@ sys_uptime(void)
 int
 sys_shmbrk(void)
 {
-  // LAB 4: Your Code Here
-  return 0xDEADBEAF;
+	int n;
+	struct proc *curproc = myproc();
+	pde_t *pgdir = curproc->pgdir;
+	int new_break;
+	int old_break = curproc->shm_break;
+
+	if (argint(0, &n) < 0) {
+		return -1;
+	}
+
+	if (0 == n) {
+		return old_break;
+	}
+
+	if (n > 0) {
+		new_break = PGROUNDUP(curproc->shm_break + n);
+		if (curproc->shm_first + MAX_SHM == new_break)
+			return -1;
+
+		if (0 == allocuvm(pgdir, curproc->shm_break, new_break)) {
+			freevm(pgdir);
+			return -1;
+		}
+
+		curproc->shm_last = new_break - 1;
+		curproc->shm_break = new_break;
+	}
+
+	if (n < 0) {
+		deallocuvm(pgdir, curproc->shm_break, curproc->shm_first);
+		curproc->shm_last = curproc->shm_first;
+		curproc->shm_break = curproc->shm_first;
+	}
+
+	return old_break;
 }
 
 int
