@@ -362,14 +362,18 @@ cowuvm(pde_t *parent_pgdir, uint sz)
   pde_t *child_pgdir;
   pte_t *pte;
   uint i, pa, flags;
+  struct proc *curproc = myproc();
 
   child_pgdir = setupkvm();
   if (!child_pgdir)
     return 0;
 
   for (i = 0; i < sz; i += PGSIZE) {
-    if (i >= myproc()->ustack_top && i < myproc()->ustack_guard)
+    if (i >= curproc->ustack_top && i < curproc->ustack_guard)
       continue;
+
+    if (i >= curproc->shm_break && i < curproc->shm_first + MAX_SHM)
+    	continue;
 
     pte = walkpgdir(parent_pgdir, (void *)i, 0);
     if (!pte)
@@ -382,10 +386,14 @@ cowuvm(pde_t *parent_pgdir, uint sz)
     flags = PTE_FLAGS(*pte);
 
     if (flags & PTE_W) {
-      flags &= ~PTE_W;
-      flags |= PTE_COW;
-      *pte = pa | flags;
-      invlpg((void *)i);
+    	if (i >= curproc->shm_first && i < curproc->shm_first + MAX_SHM) {
+
+    	} else {
+    		flags &= ~PTE_W;
+    		flags |= PTE_COW;
+    		*pte = pa | flags;
+    		invlpg((void *)i);
+    	}
     }
 
     if (mappages(child_pgdir, (void *)i, PGSIZE, pa, flags) < 0) {

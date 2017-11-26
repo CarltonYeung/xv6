@@ -191,6 +191,10 @@ fork(void)
   np->ustack_top = curproc->ustack_top;
   np->ustack_guard = curproc->ustack_guard;
 
+  np->shm_first = curproc->shm_first;
+  np->shm_last = curproc->shm_last;
+  np->shm_break = curproc->shm_break;
+
   // Copy process state from proc.
   // Call cowuvm() for copy-on-write functionality
   if((np->pgdir = cowuvm(curproc->pgdir, curproc->sz)) == 0){

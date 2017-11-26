@@ -34,5 +34,8 @@ char* shmbrk(void) {
 
 	if (n < 0) {
 		deallocuvm(pgdir, curproc->shm_break, curproc->shm_first);
+		curproc->shm_last = curproc->shm_first;
+		curproc->shm_break = curproc->shm_first;
+		return (char *)old_break;
 	}
 }

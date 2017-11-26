@@ -99,6 +99,12 @@ exec(char *path, char **argv)
   // allocate vdso pages
   allocvdso(pgdir, myproc());
 
+  // SHM area
+  curproc->shm_first = curproc->ustack_bottom;
+  curproc->shm_last = curproc->shm_first;
+  curproc->shm_break = curproc->shm_first;
+  sz = curproc->ustack_bottom + MAX_SHM;
+
   // Save program name for debugging.
   for(last=s=path; *s; s++)
     if(*s == '/')
