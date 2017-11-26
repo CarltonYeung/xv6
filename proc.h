@@ -51,6 +51,9 @@ struct proc {
   uint ustack_bottom;          // Bottom of the user stack
   uint ustack_top;             // Top of the user stack (max guard page)
   uint ustack_guard;           // Current top of the user stack (current guard page)
+  uint shm_first;              // First byte of the SHM area
+  uint shm_last;               // Last allocated byte of the SHM area (shm_break - 1)
+  uint shm_break;              // First virtual address after the allocated SHM area
 };
 
 // Process memory is laid out contiguously, low addresses first:
