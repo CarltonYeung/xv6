@@ -68,6 +68,9 @@ argptr(int n, char **pp, int size)
   if(size < 0 || (uint)i >= curproc->sz || (uint)i+size > curproc->sz)
     return -1;
 
+  if (i >= curproc->shm_break && i < curproc->shm_first + MAX_SHM)
+	  return -1;
+
   *pp = (char*)i;
   return 0;
 }

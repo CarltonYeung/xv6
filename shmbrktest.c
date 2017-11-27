@@ -239,6 +239,44 @@ void shmbrk_multiple_forks(void) {
 
 }
 
+void shmbrk_invalid_read(void) {
+	// Test that read should return negative value for unallocated SHM area
+
+	printf(1, "shmbrk invalid read test\n");
+
+	char *buf;
+	int ret;
+
+	buf = shmbrk(0);
+
+	ret = read(0, buf, 1);
+	if (ret >= 0) {
+		printf(1, "read should have returned a negative value\n");
+		exit();
+	}
+
+	printf(1, "shmbrk invalid read test OK\n");
+}
+
+//void shmbrk_valid_read(void) {
+//	// Test valid reads from SHM area
+//
+//	printf(1, "shmbrk valid read test\n");
+//
+//	char *buf;
+//	int ret;
+//
+//	buf = shmbrk(1);
+//
+//	ret = read(0, buf, 1);
+//	if (ret < 0) {
+//		printf(1, "read should have returned a positive value\n");
+//		exit();
+//	}
+//
+//	printf(1, "shmbrk valid read test OK\n");
+//}
+
 void shmbrk_overflow(void) {
 	// Test that trying to allocate past SHM_MAX is not allowed
 }
@@ -248,6 +286,9 @@ int main(void) {
 	shmbrk_deallocate();
 	shmbrk_fork();
 	shmbrk_multiple_forks();
+	shmbrk_invalid_read();
+//	shmbrk_valid_read();
+	shmbrk_overflow();
 
 	exit();
 }
