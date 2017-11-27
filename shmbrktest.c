@@ -111,8 +111,132 @@ void shmbrk_fork(void) {
 	printf(1, "shmbrk cow fork test OK\n");
 }
 
-void shmbrk_nested_forks(void) {
-	// Test that nested forks allow inter-process communication
+void shmbrk_multiple_forks(void) {
+	// Test nested forks and a second fork directly from parent after nested forks
+
+	printf(1, "shmbrk nested cow fork test\n");
+
+	char *first;
+	char *temp;
+	int pid;
+
+	first = shmbrk(1);
+
+	// Parent write
+	*(int *)first = PGSIZE;
+
+	pid = fork();
+
+	if (0 == pid) {
+		// Child read
+		if (*(int *)first != PGSIZE) {
+			printf(1, "child should be able to read what parent wrote\n");
+			exit();
+		}
+
+		// Child write
+		temp = first + sizeof(int);
+		*(int *)temp = 306 * PGSIZE;
+
+		pid = fork();
+
+		if (0 == pid) {
+			// Grandchild read
+			if (*(int *)temp != 306 * PGSIZE) {
+				printf(1, "grandchild should be able to read what parent wrote\n");
+				exit();
+			}
+
+			if (*(int *)first != PGSIZE) {
+				printf(1, "grandchild should be able to read what grandparent wrote\n");
+				exit();
+			}
+
+			// Grandchild write
+			temp = temp + sizeof(int);
+			*(int *)temp = PGSIZE - 306;
+
+			exit();
+		}
+
+		wait();
+
+		// Child check that its write hasn't been tampered with
+		if (*(int *)temp != 306 * PGSIZE) {
+			printf(1, "child's write should not have changed\n");
+			exit();
+		}
+
+		exit();
+	}
+
+	wait();
+
+	// Test forking from original parent after nested forks
+	pid = fork();
+
+	if (0 == pid) {
+		// Child read all previous writes
+		temp = first;
+		if (*(int *)temp != PGSIZE) {
+			printf(1, "brother should be able to read parent's write\n");
+			exit();
+		}
+
+		temp = temp + sizeof(int);
+		if (*(int *)temp != 306 * PGSIZE) {
+			printf(1, "brother should be able to read sibling's write\n");
+			exit();
+		}
+
+		temp = temp + sizeof(int);
+		if (*(int *)temp != PGSIZE - 306) {
+			printf(1, "brother should be able to read nephew's write\n");
+			exit();
+		}
+
+		// Brother write
+		temp = temp + sizeof(int);
+		*(int *)temp = PGSIZE * PGSIZE;
+
+		exit();
+	}
+
+	wait();
+
+	// Parent check that its write hasn't been tampered with
+	temp = first;
+	if (*(int *)temp != PGSIZE) {
+		printf(1, "parent's write should not have changed\n");
+		exit();
+	}
+
+	// Parent read child's write
+	temp = temp + sizeof(int);
+	if (*(int *)temp != 306 * PGSIZE) {
+		printf(1, "parent should be able to read child's write\n");
+		exit();
+	}
+
+	// Parent read grandchild's write
+	temp = temp + sizeof(int);
+	if (*(int *)temp != PGSIZE - 306) {
+		printf(1, "parent should be able to read grandchild's write\n");
+		exit();
+	}
+
+	// Parent read second child's write
+	temp = temp + sizeof(int);
+	if (*(int *)temp != PGSIZE * PGSIZE) {
+		printf(1, "parent should be able to read second child's write\n");
+		exit();
+	}
+
+	// Deallocate
+	shmbrk(-1);
+
+	printf(1, "shmbrk nested cow fork test OK\n");
+
 }
 
 void shmbrk_overflow(void) {
@@ -123,6 +247,7 @@ int main(void) {
 	shmbrk_allocate();
 	shmbrk_deallocate();
 	shmbrk_fork();
+	shmbrk_multiple_forks();
 
 	exit();
 }
