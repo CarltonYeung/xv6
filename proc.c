@@ -542,3 +542,43 @@ procdump(void)
     cprintf("\n");
   }
 }
+
+int
+sys_futex_wait(void)
+{
+	int *loc;
+	int val;
+
+	if (argptr(0, (char **)&loc, sizeof(int *)) < 0) {
+	  return -1;
+	}
+
+	if (argint(1, &val) < 0) {
+	  return -1;
+	}
+
+	acquire(&ptable.lock);
+
+	if (*loc == val) {
+	  sleep(loc, &ptable.lock);
+	  release(&ptable.lock);
+	  return 0;
+	} else {
+	  release(&ptable.lock);
+	  return -1;
+	}
+}
+
+int
+sys_futex_wake(void)
+{
+	int *loc;
+
+	if (argptr(0, (char**)&loc, sizeof(int *)) < 0) {
+		return -1;
+	}
+
+	wakeup(loc);
+
+	return 0;
+}
