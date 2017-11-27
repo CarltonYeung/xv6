@@ -109,10 +109,19 @@ sys_shmbrk(void)
 
 	if (n > 0) {
 		new_break = PGROUNDUP(curproc->shm_break + n);
-		if (curproc->shm_first + MAX_SHM == new_break)
-			return -1;
 
-		if (0 == allocuvm(pgdir, curproc->shm_break, new_break)) {
+//		cprintf("shm_break = %d\n", curproc->shm_break);
+//		cprintf("n = %d\n", n);
+//		cprintf("new_break = %d\n", new_break);
+//		cprintf("shm_first = %d\n", curproc->shm_first);
+
+		if (new_break - curproc->shm_first > MAX_SHM) {
+//			cprintf("returning -1\n");
+			return -1;
+		}
+		new_break = allocuvm(pgdir, curproc->shm_break, new_break);
+
+		if (0 == new_break) {
 			freevm(pgdir);
 			return -1;
 		}

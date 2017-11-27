@@ -3,6 +3,7 @@
 #include "user.h"
 
 #define PGSIZE 4096
+#define MAX_SHM 0x1000000
 
 void shmbrk_allocate(void) {
 	printf(1, "shmbrk allocate test\n");
@@ -10,24 +11,28 @@ void shmbrk_allocate(void) {
 	char *first;
 	char *last;
 
+	shmbrk(-1);
+
 	// shmbrk(positive) and shmbrk(0)
 	first = shmbrk(1);
-	if (first < 0) {
+	if ((int)first < 0) {
 		printf(1, "shmbrk returned negative value\n");
 		exit();
 	}
 
 	last = shmbrk(0);
-	if (last < 0) {
+	if ((int)last < 0) {
 		printf(1, "shmbrk returned negative value\n");
 		exit();
 	}
 
 	// Make sure one page is allocated
 	if (last - first != PGSIZE) {
-		printf(1, "shmbrk didn not allocate the correct amount on memory\n");
+		printf(1, "shmbrk did not allocate PGSIZE bytes: %d\n", last - first);
 		exit();
 	}
+
+	shmbrk(-1);
 
 	printf(1, "shmbrk allocate test OK\n");
 }
@@ -58,17 +63,20 @@ void shmbrk_deallocate(void) {
 		exit();
 	}
 
+	shmbrk(-1);
+
 	printf(1, "shmbrk deallocate test OK\n");
 }
 
 void shmbrk_fork(void) {
 	// Test SHM area forking
-
 	printf(1, "shmbrk cow fork test\n");
 
 	char *first;
 	char *temp;
 	int pid;
+
+	shmbrk(-1);
 
 	first = shmbrk(1);
 
@@ -113,12 +121,13 @@ void shmbrk_fork(void) {
 
 void shmbrk_multiple_forks(void) {
 	// Test nested forks and a second fork directly from parent after nested forks
-
 	printf(1, "shmbrk nested cow fork test\n");
 
 	char *first;
 	char *temp;
 	int pid;
+
+	shmbrk(-1);
 
 	first = shmbrk(1);
 
@@ -236,16 +245,16 @@ void shmbrk_multiple_forks(void) {
 	shmbrk(-1);
 
 	printf(1, "shmbrk nested cow fork test OK\n");
-
 }
 
 void shmbrk_invalid_read(void) {
 	// Test that read should return negative value for unallocated SHM area
-
 	printf(1, "shmbrk invalid read test\n");
 
 	char *buf;
 	int ret;
+
+	shmbrk(-1);
 
 	buf = shmbrk(0);
 
@@ -255,30 +264,76 @@ void shmbrk_invalid_read(void) {
 		exit();
 	}
 
+	shmbrk(-1);
+
 	printf(1, "shmbrk invalid read test OK\n");
 }
 
-//void shmbrk_valid_read(void) {
-//	// Test valid reads from SHM area
-//
-//	printf(1, "shmbrk valid read test\n");
-//
-//	char *buf;
-//	int ret;
-//
-//	buf = shmbrk(1);
-//
-//	ret = read(0, buf, 1);
-//	if (ret < 0) {
-//		printf(1, "read should have returned a positive value\n");
-//		exit();
-//	}
-//
-//	printf(1, "shmbrk valid read test OK\n");
-//}
+void shmbrk_max_allocate(void) {
+	// Test that user can allocate up to MAX_SHM space
+	printf(1, "shmbrk max allocate test\n");
+
+	char *first;
+	char *last;
+	char *temp;
+	int i;
+
+	shmbrk(-306);
+
+	// Allocate MAX_SHM all at once
+	first = shmbrk(MAX_SHM);
+	if ((int)first < 0) {
+		printf(1, "1: shmbrk should have returned a positive value: %d\n", first);
+		exit();
+	}
+
+	last = shmbrk(0);
+	if (last - first != MAX_SHM) {
+		printf(1, "1: shmbrk should have allocated a total of MAX_SHM bytes: %d\n", last - first);
+		exit();
+	}
+
+	shmbrk(-306);
+
+	// Allocate MAX_SHM over multiple calls
+	for (i = 0; i < PGSIZE; i++) {
+		temp = shmbrk(MAX_SHM / PGSIZE);
+		if ((int)temp < 0) {
+			printf(1, "2: shmbrk should have returned a positive value: %d\n", temp);
+			exit();
+		}
+	}
+
+	last = shmbrk(0);
+	if (last - first != MAX_SHM) {
+		printf(1, "2: shmbrk should have allocated a total of MAX_SHM bytes: %d\n", last - first);
+		exit();
+	}
+
+	shmbrk(-306);
+
+	printf(1, "shmbrk max allocate test OK\n");
+}
 
 void shmbrk_overflow(void) {
-	// Test that trying to allocate past SHM_MAX is not allowed
+	// Test that trying to allocate past MAX_SHM causes a negative return value
+	printf(1, "shmbrk overflow test\n");
+
+	char *first;
+
+	// Deallocate SHM to reset shm_break
+	shmbrk(-1);
+
+	first = shmbrk(MAX_SHM + 1);
+
+	if ((int)first >= 0) {
+		printf(1, "shmbrk should have returned a negative value: %d\n", first);
+		exit();
+	}
+
+	shmbrk(-1);
+
+	printf(1, "shmbrk overflow test OK\n");
 }
 
 int main(void) {
@@ -287,7 +342,7 @@ int main(void) {
 	shmbrk_fork();
 	shmbrk_multiple_forks();
 	shmbrk_invalid_read();
-//	shmbrk_valid_read();
+	shmbrk_max_allocate();
 	shmbrk_overflow();
 
 	exit();
