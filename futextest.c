@@ -8,6 +8,7 @@
 #include "traps.h"
 #include "memlayout.h"
 
+#define PGSIZE 4096;
 
 typedef struct {
   int val;
@@ -69,6 +70,67 @@ void futex_wait_good(void) {
 	printf(1, "wait with good value test OK\n");
 }
 
+void futex_wait_not_SHM(void) {
+	printf(1, "wait with lock not in SHM area test\n");
+
+	int res;
+
+	shmbrk(-1);
+
+	sync_t *locks = (sync_t *)shmbrk(1);
+
+	// Before SHM area
+	locks = (sync_t *)((char *)locks - 1); // 1 byte before SHM area
+//	printf(1, "test: locks addr = %d\n", (uint)locks);
+	res = futex_wait(&locks->val, 0);
+	if (res != -1) {
+		printf(1, "lock is before SHM area: return value should be -1\n");
+		exit();
+	}
+
+	// After SHM area
+	locks = locks + 1 + PGSIZE;
+	res = futex_wait(&locks->val, 0);
+	if (res != -1) {
+		printf(1, "lock is after SHM area: return value should be -1\n");
+		exit();
+	}
+
+	shmbrk(-1);
+
+	printf(1, "wait with lock not in SHM area test OK\n");
+}
+
+void futex_wake_not_SHM(void) {
+	printf(1, "wake with lock not in SHM area test\n");
+
+	int res;
+
+	shmbrk(-1);
+
+	sync_t *locks = (sync_t *)shmbrk(1);
+
+	// Before SHM area
+	locks = (sync_t *)((char *)locks - 1); // 1 byte before SHM area
+	res = futex_wake(&locks->val);
+	if (res != -1) {
+		printf(1, "lock is before SHM area: return value should be -1\n");
+		exit();
+	}
+
+	// After SHM area
+	locks = locks + 1 + PGSIZE;
+	res = futex_wake(&locks->val);
+	if (res != -1) {
+		printf(1, "lock is after SHM area: return value should be -1\n");
+		exit();
+	}
+
+	shmbrk(-1);
+
+	printf(1, "wake with lock not in SHM area test OK\n");
+}
+
 int
 main(int argc, char *argv[]) {
 	printf(1, "original futextest\n");
@@ -117,6 +179,8 @@ main(int argc, char *argv[]) {
 	// Additional tests
 	futex_wait_bad();
 	futex_wait_good();
+	futex_wait_not_SHM();
+	futex_wake_not_SHM();
 
 	exit();
 }

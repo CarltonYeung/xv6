@@ -550,22 +550,26 @@ sys_futex_wait(void)
 	int val;
 
 	if (argptr(0, (char **)&loc, sizeof(int *)) < 0) {
-	  return -1;
+		return -1;
 	}
 
 	if (argint(1, &val) < 0) {
-	  return -1;
+		return -1;
+	}
+
+	if ((uint)loc < myproc()->shm_first || (uint)loc >= myproc()->shm_break) {
+		return -1;
 	}
 
 	acquire(&ptable.lock);
 
 	if (*loc == val) {
-	  sleep(loc, &ptable.lock);
-	  release(&ptable.lock);
-	  return 0;
+		sleep(loc, &ptable.lock);
+		release(&ptable.lock);
+		return 0;
 	} else {
-	  release(&ptable.lock);
-	  return -1;
+		release(&ptable.lock);
+		return -1;
 	}
 }
 
@@ -575,6 +579,10 @@ sys_futex_wake(void)
 	int *loc;
 
 	if (argptr(0, (char**)&loc, sizeof(int *)) < 0) {
+		return -1;
+	}
+
+	if ((uint)loc < myproc()->shm_first || (uint)loc >= myproc()->shm_break) {
 		return -1;
 	}
 
