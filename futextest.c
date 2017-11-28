@@ -79,17 +79,17 @@ void futex_wait_not_SHM(void) {
 
 	sync_t *locks = (sync_t *)shmbrk(1);
 
-	// Before SHM area
-	locks = (sync_t *)((char *)locks - 1); // 1 byte before SHM area
-//	printf(1, "test: locks addr = %d\n", (uint)locks);
+	// Before valid SHM area
+	locks = (sync_t *)((char *)locks - 1);
 	res = futex_wait(&locks->val, 0);
 	if (res != -1) {
 		printf(1, "lock is before SHM area: return value should be -1\n");
 		exit();
 	}
 
-	// After SHM area
-	locks = locks + 1 + PGSIZE;
+	// After valid SHM area
+	shmbrk(-1);
+	locks = (sync_t *)shmbrk(0);
 	res = futex_wait(&locks->val, 0);
 	if (res != -1) {
 		printf(1, "lock is after SHM area: return value should be -1\n");
@@ -110,7 +110,7 @@ void futex_wake_not_SHM(void) {
 
 	sync_t *locks = (sync_t *)shmbrk(1);
 
-	// Before SHM area
+	// Before valid SHM area
 	locks = (sync_t *)((char *)locks - 1); // 1 byte before SHM area
 	res = futex_wake(&locks->val);
 	if (res != -1) {
@@ -118,8 +118,9 @@ void futex_wake_not_SHM(void) {
 		exit();
 	}
 
-	// After SHM area
-	locks = locks + 1 + PGSIZE;
+	// After valid SHM area
+	shmbrk(-1);
+	locks = (sync_t *)shmbrk(0);
 	res = futex_wake(&locks->val);
 	if (res != -1) {
 		printf(1, "lock is after SHM area: return value should be -1\n");
