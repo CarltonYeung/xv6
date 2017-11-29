@@ -147,6 +147,8 @@ void mutex_lock(mutex_t *m) {
 }
 
 int  mutex_trylock(mutex_t *m) {
+	if (__sync_lock_test_and_set(&m->flag, 1))
+		return -1;
 	return 0;
 }
 
