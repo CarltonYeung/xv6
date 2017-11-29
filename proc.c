@@ -550,14 +550,17 @@ sys_futex_wait(void)
 	int val;
 
 	if (argptr(0, (char **)&loc, sizeof(int *)) < 0) {
+		cprintf("futex_wait: bad pointer\n");
 		return -1;
 	}
 
 	if (argint(1, &val) < 0) {
+		cprintf("futex_wait: bad int\n");
 		return -1;
 	}
 
 	if ((uint)loc < myproc()->shm_first || (uint)loc >= myproc()->shm_break) {
+		cprintf("futex_wait: loc (%d) not in SHM area (%d - %d)\n", (uint)loc, myproc()->shm_first, myproc()->shm_break);
 		return -1;
 	}
 

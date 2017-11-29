@@ -22,33 +22,29 @@ void children_add_shared_int(void) {
 
 	int pid;
 	int i, j;
+	int goal = 100000;
 
-	shared_var *s = (shared_var *)shmbrk(sizeof(shared_var));
+	shared_var *s = (shared_var *)shmbrk(PGSIZE);
 	s->count = 0;
 	mutex_init(&s->m);
-
-	if ((&s->m)->flag != 0) {
-		printf(1, "mutex flag should be initialized to 0: %d\n", (&s->m)->flag);
-		exit();
-	}
 
 	for (i = 0; i < 2; i++) {
 		pid = fork();
 		if (0 == pid) {
-			for (j = 0; j < 10000000; j++) {
+			for (j = 0; j < goal; j++) {
 				mutex_lock(&s->m);
-				s->count = s->count + 1;
+				s->count++;
 				mutex_unlock(&s->m);
 			}
 			exit();
 		}
 	}
 
-//	for (i = 0; i < 2; i++)
-//		wait();
+	for (i = 0; i < 2; i++)
+		wait();
 
-	if (s->count != 20000000) {
-		printf(1, "count should be 20,000,000: %d\n", s->count);
+	if (s->count != 2 * goal) {
+		printf(1, "count should be %d: %d\n", 2 * goal, s->count);
 		exit();
 	}
 
