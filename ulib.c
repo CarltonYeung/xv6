@@ -133,3 +133,37 @@ vdso_getpid()
   return _getpid_func();
 }
 
+void mutex_init(mutex_t *m) {
+	m->flag = 0;
+}
+
+void mutex_lock(mutex_t *m) {
+	int old;
+
+	do {
+		old = m->flag;
+		futex_wait((int *)m->flag, 0);
+	} while (__sync_val_compare_and_swap(&m->flag, old, 1) == 0);
+}
+
+int  mutex_trylock(mutex_t *m) {
+	return 0;
+}
+
+void mutex_unlock(mutex_t *m) {
+	m->flag = 0;
+	futex_wake((int *)&m->flag);
+}
+
+void cv_init(cond_var_t *cv) {
+
+}
+
+void cv_wait(cond_var_t *cv, mutex_t *m) {
+
+}
+
+void cv_bcast(cond_var_t *cv) {
+
+}
+

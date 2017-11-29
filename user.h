@@ -2,6 +2,7 @@ struct stat;
 struct rtcdate;
 
 typedef struct {
+	volatile int flag; // 0 = available; 1 = unavailable
 } mutex_t;
 
 typedef struct {
