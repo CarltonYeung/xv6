@@ -93,9 +93,59 @@ void children_add_shared_int_trylock(void) {
 	printf(1, "children add to shared int trylock test OK\n");
 }
 
+typedef struct {
+	mutex_t m1;
+	mutex_t m2;
+} two_locks;
+
+void futex_man_pages_demo(void) {
+	printf(1, "futex man pages demo\n");
+
+	int pid;
+	int j;
+	int nloops;
+
+	nloops = 5;
+
+	two_locks *locks = (two_locks *)shmbrk(sizeof(two_locks));
+
+	// Initially unavailable to child
+	mutex_init(&locks->m1);
+	mutex_lock(&locks->m1);
+
+	// Initially available to parent
+	mutex_init(&locks->m2);
+
+	pid = fork();
+	if (-1 == pid) {
+		printf(1, "fork returned -1\n");
+		exit();
+	}
+
+	if (0 == pid) {
+		for (j = 0; j < nloops; j++) {
+			mutex_lock(&locks->m1);
+			printf(1, "Child (%d) %d\n", getpid(), j);
+			mutex_unlock(&locks->m2);
+		}
+		exit();
+	}
+
+	for (j = 0; j < nloops; j++) {
+		mutex_lock(&locks->m2);
+		printf(1, "Parent (%d) %d\n", getpid(), j);
+		mutex_unlock(&locks->m1);
+	}
+
+	wait();
+
+	printf(1, "futex man pages demo OK\n");
+}
+
 int main(void) {
 	children_add_shared_int();
 	children_add_shared_int_trylock();
+	futex_man_pages_demo(); // http://man7.org/linux/man-pages/man2/futex.2.html
 
 	exit();
 }
