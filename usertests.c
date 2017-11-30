@@ -1760,8 +1760,8 @@ main(int argc, char *argv[])
   createdelete();
   linkunlink();
   concreate();
-  fourfiles();
-  sharedfd();
+//  fourfiles();
+//  sharedfd();
 
   bigargtest();
   bigwrite();
@@ -1791,7 +1791,7 @@ main(int argc, char *argv[])
   linktest();
   unlinkread();
   dirfile();
-  iref();
+//  iref();
   forktest();
   bigdir(); // slow
 
