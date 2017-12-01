@@ -140,10 +140,7 @@ void mutex_init(mutex_t *m) {
 void mutex_lock(mutex_t *m) {
 	do {
 		futex_wait((int *)&m->flag, 1); // sleep if unavailable (1)
-//		printf(1, "%d woke up, lock = %d\n", getpid(), m->flag);
 	} while (__sync_lock_test_and_set(&m->flag, 1));
-//	printf(1, "%d took the lock, lock = %d\n", getpid(), m->flag);
-//	printf(1, "%d count is now %d\n", getpid(), *(int *)((char *)m + sizeof(mutex_t)));
 }
 
 int  mutex_trylock(mutex_t *m) {
@@ -153,30 +150,24 @@ int  mutex_trylock(mutex_t *m) {
 }
 
 void mutex_unlock(mutex_t *m) {
-//	printf(1, "%d unlocking, lock = %d\n", getpid(), m->flag);
-//	printf(1, "%d count is now %d\n", getpid(), *(int *)((char *)m + sizeof(mutex_t)));
 	m->flag = 0; // set flag to available (0)
 	futex_wake((int *)&m->flag);
 }
 
 void cv_init(cond_var_t *cv) {
-	cv->done = 0; // 0 = not done
+	cv->done = 0; // 0 = false
 }
 
 void cv_wait(cond_var_t *cv, mutex_t *m) {
-	mutex_lock(m);
-
 	while (!cv->done) {
-//		mutex_unlock(m);
+		mutex_unlock(m);
 		futex_wait((int *)&cv->done, 0);
 		mutex_lock(m);
 	}
 }
 
 void cv_bcast(cond_var_t *cv) {
-	// Caller should have acquired mutex
 	cv->done = 1;
 	futex_wake((int *)&cv->done);
-	// Caller should release mutex
 }
 

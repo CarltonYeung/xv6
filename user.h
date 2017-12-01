@@ -6,7 +6,7 @@ typedef struct {
 } mutex_t;
 
 typedef struct {
-	volatile int done; // 0 = not done; 1 = done
+	volatile int done; // 0 = false; 1 = true
 } cond_var_t;
 
 // system calls
