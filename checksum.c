@@ -184,13 +184,20 @@ void checksum_producers_consumers(void) {
 			// Read and append 12 byte chunks (from README to shared buffer)
 			for (nread = Read(fd, readme, 12); nread != EOF; nread = Read(fd, readme, 12)) {
 				mutex_lock(lock);
-				while (nread > BUFSIZE - q->size)
+				while (nread > BUFSIZE - q->size) {
+					printf(1, "Producer %d waiting\n", i);
 					cv_wait(non_full, lock);
+				}
 
 				for (j = 0; j < nread; j++)
 					enqueue(q, readme[j]);
 
-				printf(1, "Producer (%d) enqueued (%d) characters\n", i, nread);
+				printf(1, "Producer %d enqueued %d characters\n", i, nread);
+
+				// Update condition variables
+				non_empty->done = 1; // true
+				if (q->size == BUFSIZE)
+					non_full->done = 0; // false
 
 				cv_bcast(non_empty);
 				mutex_unlock(lock);
@@ -222,19 +229,26 @@ void checksum_producers_consumers(void) {
 			// Read and sum 8 byte chunks (from shared buffer to local sum
 			while (1) {
 				mutex_lock(lock);
-				while (q->size == 0 && !producers_done(done, 4))
+				while (q->size == 0 && !producers_done(done, 4)) {
+					printf(1, "Consumer %d waiting\n", i);
 					cv_wait(non_empty, lock);
+				}
 
 				nitems = (q->size > 8)? 8 : q->size;
 				for (j = 0; j < nitems; j++)
 					sum += dequeue(q);
 
-				printf(1, "Consumer (%d) dequeued (%d) characters\n", i, nitems);
+				printf(1, "Consumer %d dequeued %d characters\n", i, nitems);
 
 				if (q->size == 0 && producers_done(done, 4)) {
 					mutex_unlock(lock);
 					break;
 				}
+
+				// Update condition variables
+				if (q->size == 0)
+					non_empty->done = 0; // false
+				non_full->done = 1; // true
 
 				cv_bcast(non_full);
 				mutex_unlock(lock);

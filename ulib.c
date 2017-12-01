@@ -167,7 +167,6 @@ void cv_wait(cond_var_t *cv, mutex_t *m) {
 }
 
 void cv_bcast(cond_var_t *cv) {
-	cv->done = 1;
 	futex_wake((int *)&cv->done);
 }
 
