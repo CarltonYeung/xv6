@@ -134,7 +134,7 @@ vdso_getpid()
 }
 
 void mutex_init(mutex_t *m) {
-	m->flag = 0;
+	m->flag = 0; // 0 = available
 }
 
 void mutex_lock(mutex_t *m) {
@@ -160,14 +160,23 @@ void mutex_unlock(mutex_t *m) {
 }
 
 void cv_init(cond_var_t *cv) {
-
+	cv->done = 0; // 0 = not done
 }
 
 void cv_wait(cond_var_t *cv, mutex_t *m) {
+	mutex_lock(m);
 
+	while (0 == cv->done) {
+		mutex_unlock(m);
+		futex_wait((int *)&cv->done, 0);
+		mutex_lock(m);
+	}
 }
 
 void cv_bcast(cond_var_t *cv) {
-
+	// Caller should have acquired mutex
+	cv->done = 1;
+	futex_wake((int *)&cv->done);
+	// Caller should release mutex
 }
 
