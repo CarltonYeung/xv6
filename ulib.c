@@ -166,8 +166,8 @@ void cv_init(cond_var_t *cv) {
 void cv_wait(cond_var_t *cv, mutex_t *m) {
 	mutex_lock(m);
 
-	while (0 == cv->done) {
-		mutex_unlock(m);
+	while (!cv->done) {
+//		mutex_unlock(m);
 		futex_wait((int *)&cv->done, 0);
 		mutex_lock(m);
 	}
