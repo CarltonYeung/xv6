@@ -171,11 +171,14 @@ cv_init(cond_var_t *cv)
 void
 cv_wait(cond_var_t *cv, mutex_t *m)
 {
-	while (!cv->done) {
+	int old;
+
+	do {
+		old = cv->done;
 		mutex_unlock(m);
-		futex_wait((int *)&cv->done, 0);
+		futex_wait((int *)&cv->done, old); // sleep if value is unchanged
 		mutex_lock(m);
-	}
+	} while (!cv->done);
 }
 
 void

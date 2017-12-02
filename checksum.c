@@ -201,12 +201,13 @@ checksum_producers_consumers(void)
 				while (nread > BUFSIZE - q->size) {
 					printf(1, "Producer %d waiting\n", i);
 					cv_wait(non_full, lock);
+					printf(1, "Producer %d waking up\n", i);
 				}
 
 				for (j = 0; j < nread; j++)
 					enqueue(q, readme[j]);
 
-				printf(1, "Producer %d enqueued %d characters\n", i, nread);
+				printf(1, "Producer %d enqueued %d chars\n", i, nread);
 
 				cv_bcast(non_empty);
 				mutex_unlock(lock);
@@ -219,7 +220,7 @@ checksum_producers_consumers(void)
 			done[i] = 1;
 			mutex_unlock(lock);
 
-			printf(1, "Producer %d finished\n", i);
+			printf(1, "Producer %d finished <--------------------\n", i);
 			exit();
 		}
 	}
@@ -241,13 +242,14 @@ checksum_producers_consumers(void)
 				while (q->size == 0 && !producers_done(done, NPRODUCERS)) {
 					printf(1, "Consumer %d waiting\n", i);
 					cv_wait(non_empty, lock);
+					printf(1, "Consumer %d waking up\n", i);
 				}
 
 				nitems = (q->size > CCHUNKSZ)? CCHUNKSZ : q->size;
 				for (j = 0; j < nitems; j++)
 					sum += dequeue(q);
 
-				printf(1, "Consumer %d dequeued %d characters\n", i, nitems);
+				printf(1, "Consumer %d dequeued %d chars\n", i, nitems);
 
 				if (q->size == 0 && producers_done(done, NPRODUCERS)) {
 					mutex_unlock(lock);
@@ -263,7 +265,7 @@ checksum_producers_consumers(void)
 			checksum += sum;
 			mutex_unlock(lock);
 
-			printf(1, "Consumer %d finished\n", i);
+			printf(1, "Consumer %d finished <--------------------\n", i);
 			exit();
 		}
 	}
