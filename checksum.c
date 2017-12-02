@@ -11,8 +11,14 @@
 #define PGSIZE 4096
 #define BUFSIZE 128
 #define EOF 0
+#define NPRODUCERS 4
+#define NCONSUMERS 4
+#define PCHUNKSZ 12
+#define CCHUNKSZ 8
 
-int Fork(void) {
+int
+Fork(void)
+{
 	int pid;
 
 	pid = fork();
@@ -24,7 +30,9 @@ int Fork(void) {
 	return pid;
 }
 
-int Open(char *name, int flags) {
+int
+Open(char *name, int flags)
+{
 	int fd;
 
 	fd = open(name, flags);
@@ -36,7 +44,9 @@ int Open(char *name, int flags) {
 	return fd;
 }
 
-int Read(int fd, void *buf, int size) {
+int
+Read(int fd, void *buf, int size)
+{
 	int nread;
 
 	nread = read(fd, buf, size);
@@ -48,7 +58,9 @@ int Read(int fd, void *buf, int size) {
 	return nread;
 }
 
-void checksum_single_process(void) {
+void
+checksum_single_process(void)
+{
 	printf(1, "README (x4) single process checksum\n");
 
 	int fd;
@@ -87,7 +99,9 @@ void init_queue(queue* q) {
 	q->size = 0;
 }
 
-void enqueue(queue *q, char val) {
+void
+enqueue(queue *q, char val)
+{
 	if (q->size == BUFSIZE) {
 		printf(2, "queue is full\n");
 	} else if (q->head == -1) {
@@ -102,7 +116,9 @@ void enqueue(queue *q, char val) {
 	}
 }
 
-char dequeue(queue *q) {
+char
+dequeue(queue *q)
+{
 	char val;
 
 	if (q->head == -1) {
@@ -123,7 +139,9 @@ char dequeue(queue *q) {
 }
 
 // Returns 1 if done[i] == 1 for all i
-int producers_done(int done[], int size) {
+int
+producers_done(int done[], int size)
+{
 	int val = done[0];
 	int i;
 
@@ -133,7 +151,9 @@ int producers_done(int done[], int size) {
 	return val;
 }
 
-void checksum_producers_consumers(void) {
+void
+checksum_producers_consumers(void)
+{
 	printf(1, "README (x4) producers/consumers checksum\n");
 
 	int pid;
@@ -145,7 +165,7 @@ void checksum_producers_consumers(void) {
 	mutex_t *lock;          // this lock is used to protect all shared data
 	cond_var_t *non_empty;
 	cond_var_t *non_full;
-	int done[4];            // consumers need to know when producers are all done
+	int done[NPRODUCERS];   // consumers need to know when producers are all done
 
 	checksum = 0;
 
@@ -161,10 +181,10 @@ void checksum_producers_consumers(void) {
 	non_full = (cond_var_t *)((char *)non_empty + sizeof(cond_var_t));
 	cv_init(non_full);
 
-	memset(done, 0, 4 * sizeof(int));
+	memset(done, 0, NPRODUCERS * sizeof(int));
 
-	// fork 4 producers
-	for (i = 0; i < 4; i++) {
+	// fork producers
+	for (i = 0; i < NPRODUCERS; i++) {
 		pid = Fork();
 		if (pid == 0) {
 			// Local data
@@ -176,7 +196,7 @@ void checksum_producers_consumers(void) {
 			fd = Open("README", O_RDONLY);
 
 			// Read and append 12 byte chunks (from README to shared buffer)
-			for (nread = Read(fd, readme, 12); nread != EOF; nread = Read(fd, readme, 12)) {
+			for (nread = Read(fd, readme, PCHUNKSZ); nread != EOF; nread = Read(fd, readme, PCHUNKSZ)) {
 				mutex_lock(lock);
 				while (nread > BUFSIZE - q->size) {
 					printf(1, "Producer %d waiting\n", i);
@@ -205,7 +225,7 @@ void checksum_producers_consumers(void) {
 	}
 
 	// fork 4 consumers
-	for (i = 0; i < 4; i++) {
+	for (i = 0; i < NCONSUMERS; i++) {
 		pid = Fork();
 		if (pid == 0) {
 			// Local data
@@ -218,18 +238,18 @@ void checksum_producers_consumers(void) {
 			// Read and sum 8 byte chunks (from shared buffer to local sum
 			while (1) {
 				mutex_lock(lock);
-				while (q->size == 0 && !producers_done(done, 4)) {
+				while (q->size == 0 && !producers_done(done, NPRODUCERS)) {
 					printf(1, "Consumer %d waiting\n", i);
 					cv_wait(non_empty, lock);
 				}
 
-				nitems = (q->size > 8)? 8 : q->size;
+				nitems = (q->size > CCHUNKSZ)? CCHUNKSZ : q->size;
 				for (j = 0; j < nitems; j++)
 					sum += dequeue(q);
 
 				printf(1, "Consumer %d dequeued %d characters\n", i, nitems);
 
-				if (q->size == 0 && producers_done(done, 4)) {
+				if (q->size == 0 && producers_done(done, NPRODUCERS)) {
 					mutex_unlock(lock);
 					break;
 				}
@@ -249,13 +269,15 @@ void checksum_producers_consumers(void) {
 	}
 
 	// Parent continues here
-	for (i = 0; i < 8; i++)
+	for (i = 0; i < NPRODUCERS + NCONSUMERS; i++)
 		wait();
 
 	printf(1, "README (x4) producers/consumers checksum = %d\n", checksum);
 }
 
-int main(void) {
+int
+main(void)
+{
 	checksum_single_process();
 	checksum_producers_consumers();
 

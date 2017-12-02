@@ -25,7 +25,9 @@ typedef struct {
 	mutex_t m2;
 } two_locks;
 
-void futex_wait_bad(void) {
+void
+futex_wait_bad(void)
+{
 	// Test that the return value of waiting with a bad value is -1
 	printf(1, "wait with bad value test\n");
 
@@ -46,7 +48,9 @@ void futex_wait_bad(void) {
 	printf(1, "wait with bad value test OK\n");
 }
 
-void futex_wait_good(void) {
+void
+futex_wait_good(void)
+{
 	// Test that the return value of waiting with a good value is 0
 	printf(1, "wait with good value test\n");
 
@@ -80,7 +84,9 @@ void futex_wait_good(void) {
 	printf(1, "wait with good value test OK\n");
 }
 
-void futex_wait_not_SHM(void) {
+void
+futex_wait_not_SHM(void)
+{
 	printf(1, "wait with lock not in SHM area test\n");
 
 	int res;
@@ -111,7 +117,9 @@ void futex_wait_not_SHM(void) {
 	printf(1, "wait with lock not in SHM area test OK\n");
 }
 
-void futex_wake_not_SHM(void) {
+void
+futex_wake_not_SHM(void)
+{
 	printf(1, "wake with lock not in SHM area test\n");
 
 	int res;
@@ -142,7 +150,9 @@ void futex_wake_not_SHM(void) {
 	printf(1, "wake with lock not in SHM area test OK\n");
 }
 
-void children_add_shared_int(void) {
+void
+children_add_shared_int(void)
+{
 	printf(1, "children add to shared int test\n");
 
 	shmbrk(-1);
@@ -181,7 +191,9 @@ void children_add_shared_int(void) {
 	printf(1, "children add to shared int test OK\n");
 }
 
-void children_add_shared_int_trylock(void) {
+void
+children_add_shared_int_trylock(void)
+{
 	printf(1, "children add to shared int trylock test\n");
 
 	shmbrk(-1);
@@ -220,7 +232,9 @@ void children_add_shared_int_trylock(void) {
 	printf(1, "children add to shared int trylock test OK\n");
 }
 
-void futex_man_pages_demo(void) {
+void
+futex_man_pages_demo(void)
+{
 	printf(1, "futex man pages demo\n");
 	printf(1, "Parent and Child should alternate in order\n");
 
@@ -265,7 +279,9 @@ void futex_man_pages_demo(void) {
 	printf(1, "futex man pages demo OK\n");
 }
 
-void futex_man_pages_demo_trylock(void) {
+void
+futex_man_pages_demo_trylock(void)
+{
 	printf(1, "futex man pages demo trylock\n");
 	printf(1, "Parent and Child should alternate in order\n");
 
@@ -311,7 +327,8 @@ void futex_man_pages_demo_trylock(void) {
 }
 
 int
-main(int argc, char *argv[]) {
+main(int argc, char *argv[])
+{
 	printf(1, "original futextest\n");
 	int pid;
 	int res;

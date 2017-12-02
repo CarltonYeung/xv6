@@ -5,7 +5,9 @@
 #define PGSIZE 4096
 #define MAX_SHM 0x1000000
 
-void shmbrk_allocate(void) {
+void
+shmbrk_allocate(void)
+{
 	printf(1, "shmbrk allocate test\n");
 
 	char *first;
@@ -37,7 +39,9 @@ void shmbrk_allocate(void) {
 	printf(1, "shmbrk allocate test OK\n");
 }
 
-void shmbrk_deallocate(void) {
+void
+shmbrk_deallocate(void)
+{
 	printf(1, "shmbrk deallocate test\n");
 
 	char *first;
@@ -68,7 +72,9 @@ void shmbrk_deallocate(void) {
 	printf(1, "shmbrk deallocate test OK\n");
 }
 
-void shmbrk_fork(void) {
+void
+shmbrk_fork(void)
+{
 	// Test SHM area forking
 	printf(1, "shmbrk cow fork test\n");
 
@@ -119,7 +125,9 @@ void shmbrk_fork(void) {
 	printf(1, "shmbrk cow fork test OK\n");
 }
 
-void shmbrk_multiple_forks(void) {
+void
+shmbrk_multiple_forks(void)
+{
 	// Test nested forks and a second fork directly from parent after nested forks
 	printf(1, "shmbrk nested cow fork test\n");
 
@@ -247,7 +255,9 @@ void shmbrk_multiple_forks(void) {
 	printf(1, "shmbrk nested cow fork test OK\n");
 }
 
-void shmbrk_invalid_read(void) {
+void
+shmbrk_invalid_read(void)
+{
 	// Test that read should return negative value for unallocated SHM area
 	printf(1, "shmbrk invalid read test\n");
 
@@ -269,7 +279,9 @@ void shmbrk_invalid_read(void) {
 	printf(1, "shmbrk invalid read test OK\n");
 }
 
-void shmbrk_max_allocate(void) {
+void
+shmbrk_max_allocate(void)
+{
 	// Test that user can allocate up to MAX_SHM space
 	printf(1, "shmbrk max allocate test\n");
 
@@ -315,7 +327,9 @@ void shmbrk_max_allocate(void) {
 	printf(1, "shmbrk max allocate test OK\n");
 }
 
-void shmbrk_overflow(void) {
+void
+shmbrk_overflow(void)
+{
 	// Test that trying to allocate past MAX_SHM causes a negative return value
 	printf(1, "shmbrk overflow test\n");
 
@@ -336,7 +350,9 @@ void shmbrk_overflow(void) {
 	printf(1, "shmbrk overflow test OK\n");
 }
 
-int main(void) {
+int
+main(void)
+{
 	shmbrk_allocate();
 	shmbrk_deallocate();
 	shmbrk_fork();
