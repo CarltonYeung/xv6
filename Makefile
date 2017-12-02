@@ -191,15 +191,16 @@ UPROGS=\
 	_usertests\
 	_wc\
 	_zombie\
-	_wolfietest\
-	_cowforktest\
-	_np_read\
-	_np_write\
-	_vdsotest\
-	_stacktest\
 	_futextest\
 	_shmbrktest\
 	_checksum\
+	
+#	_wolfietest\
+#	_cowforktest\
+#	_np_read\
+#	_np_write\
+#	_vdsotest\
+#	_stacktest\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
