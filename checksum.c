@@ -195,9 +195,9 @@ void checksum_producers_consumers(void) {
 				printf(1, "Producer %d enqueued %d characters\n", i, nread);
 
 				// Update condition variables
-				non_empty->done = 1; // true
-				if (q->size == BUFSIZE)
-					non_full->done = 0; // false
+//				non_empty->done = 1; // true
+//				if (q->size == BUFSIZE)
+//					non_full->done = 0; // false
 
 				cv_bcast(non_empty);
 				mutex_unlock(lock);
@@ -246,9 +246,9 @@ void checksum_producers_consumers(void) {
 				}
 
 				// Update condition variables
-				if (q->size == 0)
-					non_empty->done = 0; // false
-				non_full->done = 1; // true
+//				if (q->size == 0)
+//					non_empty->done = 0; // false
+//				non_full->done = 1; // true
 
 				cv_bcast(non_full);
 				mutex_unlock(lock);

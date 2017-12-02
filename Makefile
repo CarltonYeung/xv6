@@ -199,7 +199,6 @@ UPROGS=\
 	_stacktest\
 	_futextest\
 	_shmbrktest\
-	_mutextest\
 	_checksum\
 
 fs.img: mkfs README $(UPROGS)
