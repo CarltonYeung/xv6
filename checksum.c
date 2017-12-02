@@ -12,40 +12,6 @@
 #define BUFSIZE 128
 #define EOF 0
 
-void checksum_single_process(void) {
-	int fd;
-	char checksum;
-	char token;
-	int ret;
-	int nloops;
-
-	checksum = 0;
-
-	for (nloops = 0; nloops < 4; nloops++) {
-		fd = open("README", O_RDONLY);
-		if (fd < 0) {
-			printf(2, "open failed\n");
-			exit();
-		}
-
-		do {
-			ret = read(fd, &token, sizeof(char));
-			if (ret < 0) {
-				printf(2, "read failed\n");
-				exit();
-			}
-
-//			printf(1, "%c", token);
-
-			checksum = checksum + token;
-		} while (ret != 0);
-
-		close(fd);
-	}
-
-	printf(1, "README (x4) single process checksum = %d\n", checksum);
-}
-
 int Fork(void) {
 	int pid;
 
@@ -80,6 +46,32 @@ int Read(int fd, void *buf, int size) {
 	}
 
 	return nread;
+}
+
+void checksum_single_process(void) {
+	printf(1, "README (x4) single process checksum\n");
+
+	int fd;
+	char checksum;
+	char token;
+	int nread;
+	int i;
+
+	checksum = 0;
+
+	for (i = 0; i < 4; i++) {
+		fd = Open("README", O_RDONLY);
+
+		do {
+			nread = read(fd, &token, sizeof(char));
+//			printf(1, "%c", token);
+			checksum += token;
+		} while (nread != 0);
+
+		close(fd);
+	}
+
+	printf(1, "README (x4) single process checksum = %d\n", checksum);
 }
 
 typedef struct {
@@ -142,6 +134,8 @@ int producers_done(int done[], int size) {
 }
 
 void checksum_producers_consumers(void) {
+	printf(1, "README (x4) producers/consumers checksum\n");
+
 	int pid;
 	int i;
 
@@ -194,11 +188,6 @@ void checksum_producers_consumers(void) {
 
 				printf(1, "Producer %d enqueued %d characters\n", i, nread);
 
-				// Update condition variables
-//				non_empty->done = 1; // true
-//				if (q->size == BUFSIZE)
-//					non_full->done = 0; // false
-
 				cv_bcast(non_empty);
 				mutex_unlock(lock);
 			}
@@ -245,11 +234,6 @@ void checksum_producers_consumers(void) {
 					break;
 				}
 
-				// Update condition variables
-//				if (q->size == 0)
-//					non_empty->done = 0; // false
-//				non_full->done = 1; // true
-
 				cv_bcast(non_full);
 				mutex_unlock(lock);
 			}
@@ -272,7 +256,7 @@ void checksum_producers_consumers(void) {
 }
 
 int main(void) {
-//	checksum_single_process();
+	checksum_single_process();
 	checksum_producers_consumers();
 
 	exit();
