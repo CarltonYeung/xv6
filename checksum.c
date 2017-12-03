@@ -169,7 +169,6 @@ checksum_producers_consumers(void)
 
 	non_full = (cond_var_t *)((char *)non_empty + sizeof(cond_var_t));
 	cv_init(non_full);
-	non_full->done = 1;
 
 	ndone = (int *)((char *)non_full + sizeof(cond_var_t));
 	*ndone = 0;
@@ -180,7 +179,7 @@ checksum_producers_consumers(void)
 		if (pid == 0) {
 			// Producers' local data
 			int fd;
-			char readme[12];   // intermediary between file and shared buffer
+			char readme[PCHUNKSZ];   // intermediary between file and shared buffer
 			int nread;
 			int j;
 

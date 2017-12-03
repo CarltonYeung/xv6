@@ -1,0 +1,156 @@
+Lab 4
+Carlton Yeung
+
+Makefile
+    Add user test programs:
+        1. shmbrktest
+        2. checksum
+    
+    Some 'usertests' tests were causing balloc(): out of blocks panic.
+    I considered two causes: 1. I was incorrectly reserving space for the stack VMA and shared memory SHM areas.
+                             2. xv6 can only use a small amount of memory (?) and there were too many user programs taking up those blocks.
+    Truthfully, I really only considered the second case because it would be easier to solve...and it turned out that there were too many user programs.
+    
+    Remove/modify user test programs:
+        1. Merge my mutextest into futextest.
+        2. Remove my test programs from previous labs.
+    
+    This fixed the balloc() panic for 5 or 6 usertest tests crashing.
+    
+    
+checksum.c
+    Implement 2 tests:
+        1. "You can calculate this value offline and use it to check the final global checksum to test the correctness of your program."
+        2. 4 Producers / 4 consumers checksum using mutexes and condition variables.
+    
+    The byte-level checksum is -28.
+    
+    Implement shared buffer data structure with enqueue and dequeue operations.
+    
+    Problems:
+        1. On rare occasions, producers/consumers test never returns.
+            a. Buggy condition variable implementation?
+            b. Buggy producers/consumers test implementation?
+
+
+exec.c
+    1. Initialize values for shm_first, shm_last, shm_break.
+    2. Reserve space for SHM area after stack area by incrementing 'sz' variable.
+    
+    
+futextest.c
+    Implement my own tests in addition to the original futextest from lab4 initial commit.
+    As I mentioned earlier, I merged mutextest with futextest.
+    
+    futex tests:
+	    1. Test waiting on a bad value (should not sleep)
+	    2. Test waiting on a good value (should sleep)
+	    3. Test waiting on variable that isn't in SHM area
+	    4. Test waking on variable that isn't in SHM area
+    
+    mutex tests:
+        5. Test multiple children adding to a shared integer using mutex_lock()
+        6. Same as 5, but with mutex_trylock()
+        
+        I read through the futex man pages. It has a description of how to implement mutexes using futexes and has a demo test that I thought should work for our mutex implementation.
+        It is a similar test to the original futextest from lab4 initial commit. The idea is to have the parent unlock the lock for the child and the child to unlock the lock for the parent.
+        The correct output is such that (parent prints, then child prints)*n times and the output should go from 0...n-1 in order.
+        
+        7. futex man pages demo with mutex_lock()
+        8. Same as 7, but with mutex_trylock()
+
+
+proc.c
+    1. Copy shm_first, shm_last, shm_break to child process in fork().
+    2. Implement sys_futex_wait()
+        a. Boilerplate syscall argument retrieval
+        b. I moved the futex syscalls to proc.c because I needed to use ptable.lock for sleep() and wakeup().
+        c. The concurrency issue here is to make checking the value and sleeping atomic w.r.t. futex_wake().
+            i. First acquire the ptable.lock.
+            ii. Check the value of loc and sleep on loc if required, otherwise don't sleep.
+    3. Implement sys_futex_wake()
+        a. Boilerplate syscall argument retrieval
+        b. Just call wakeup() on the loc. Let wakeup() acquire and release the ptable.lock.
+        
+
+proc.h
+    Add shm_first, shm_last, shm_break to keep track of SHM area.
+    
+    
+shmbrktest.c
+    My implemenation of SHM area allocation grows the area by multiples of PGSIZE.
+    
+    1. Test shmbrk() allocation wiht positive argument.
+    2. Test shmbrk() deallocation with negative argument.
+    3. Test shmbrk() return value with argument == 0.
+    4. Test the SHM area interaction with cow forking. All the processes should be able to read/write the same physical SHM pages.
+        a. Single fork
+        b. Multiple forks
+            i. Nested forks (1 parent -> 1 child -> 1 grandchild)
+            ii. Parallel (?) forks (nested forks plus 1 more child)
+    5. Test read() syscall in unallocated SHM area.
+    6. Test allocation of MAX_SHM bytes.
+        a. Allocate all MAX_SHM bytes in one shmbrk() call.
+        b. Allocate MAX_SHM bytes across multiple shmbrk() calls.
+    7. Test overflow of SHM area by requesting 1 byte more than SHM_MAX.
+    
+
+syscall.c
+    1. argptr returns -1 if pointer is in unallocated SHM area.
+    
+    
+sysproc.c
+    Implement sys_shmbrk()
+    1. Allocate multiples of PGSIZE bytes at a time for positive n and return previous break.
+    2. Deallocate SHM area for negative n and return previous break.
+    3. Just return previous break for n == 0.
+    
+    
+ulib.c
+    Implement mutex_init()
+    1. Just set the flag to 0 to indicate that the lock is available.
+    
+    Implement mutex_lock()
+    1. Sleep if the lock is unavailable and acquire the lock upon waking and before returning.
+        a. I put futex_wait() in a do-while with test_and_set because upon returning from futex_wait(), another thread may have acquired the lock between our waking and our acquiring it. If this is the case, then we go back to sleep and try again on our next wakeup.
+    
+    Implement mutex_unlock()
+    1. Set the lock to available.
+    2. Wake up any thread waiting on this lock.
+    
+    Implement mutex_trylock()
+    1. Same idea as mutex_lock() as far as using test_and_set to try to acquire the lock. Trylock tries it once and immediately returns with or without the lock instead of sleeping.
+    
+    Implement cv_init()
+    1. Just set 'done' to 0 to indicate that the condition is not satisfied.
+    
+    Implement cv_wait()
+    1. This was the trickiest function to implement and I don't know if I implemented it correctly. As I mentioned earlier, if my implementation is incorrect, it could be the reason why my producer/consumer test sometimes doesn't return.
+    2. I keep track of the old value of the condition variable so that the release and sleeping happens atomically.
+        a. Save the old cv value.
+        b. Unlock the mutex.
+        c. At this point, the cv value may have changed, so call futex_wait() with the old value. It should only sleep if the cv value hasn't changed between unlocking the mutex and now.
+        d. Upon returning from futex_wait(), reacquire the mutex before returning.
+        e. The do-while loop is to ensure that the thread only ever unlock/sleep/lock if the condition variable is not satisfied because if it is satisfied, then we can just return.
+        
+    Implement cv_bcast()
+    1. Set the condition variable value to indicate that the condition is satisfied.
+    2. Wake up any thread waiting for this condition variable to be satisfied.
+    
+    
+user.h
+    1. As suggested by the lab instructions, I use a single volatile integer for both the mutex and the condition variable.
+        a. A mutex is available if its value is 0 and unavailable if its value is 1.
+        b. A cv is satisfied if its value is 1 and unsatisfied if its value is 0.
+        
+        
+vm.c
+    Modify cowuvm() so that it doesn't mark allocated SHM pages as COW because the point is for processes to share physical pages.
+    
+        
+        
+        
+        
+        
+        
+        
