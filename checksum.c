@@ -58,32 +58,32 @@ Read(int fd, void *buf, int size)
 	return nread;
 }
 
-void
+char
 checksum_single_process(void)
 {
 	printf(1, "README (x4) single process checksum\n");
 
-	int fd;
-	char checksum;
-	char token;
-	int nread;
-	int i;
+	int fd;          // README file descriptor
+	char checksum;   // byte-level checksum of 4 README files
+	char token;      // current byte
+	int nread;       // return value of Read() needed to check for EOF
+	int i;           // number of README files
 
 	checksum = 0;
 
 	for (i = 0; i < 4; i++) {
 		fd = Open("README", O_RDONLY);
 
-		do {
-			nread = read(fd, &token, sizeof(char));
-//			printf(1, "%c", token);
+		for (nread = Read(fd, &token, 1); nread != EOF; nread = Read(fd, &token, 1)) {
 			checksum += token;
-		} while (nread != 0);
+		}
 
 		close(fd);
 	}
 
 	printf(1, "README (x4) single process checksum = %d\n", checksum);
+
+	return checksum;
 }
 
 typedef struct {
@@ -138,38 +138,28 @@ dequeue(queue *q)
 	}
 }
 
-// Returns 1 if done[i] == 1 for all i
-int
-producers_done(int done[], int size)
-{
-	int val = done[0];
-	int i;
-
-	for (i = 1; i < size; i++)
-		val &= done[i];
-
-	return val;
-}
-
-void
+char
 checksum_producers_consumers(void)
 {
 	printf(1, "README (x4) producers/consumers checksum\n");
 
+	// Parent's local data
 	int pid;
 	int i;
 
 	// Shared data
-	char checksum;
-	queue *q;
-	mutex_t *lock;          // this lock is used to protect all shared data
+	char *checksum;         // global byte-level sum
+	queue *q;               // shared buffer
+	mutex_t *lock;          // lock used to protect all shared data
 	cond_var_t *non_empty;
 	cond_var_t *non_full;
-	int done[NPRODUCERS];   // consumers need to know when producers are all done
+	int *ndone;             // number of producers that are done adding to the buffer
 
-	checksum = 0;
+	// All shared data should live in SHM area
+	checksum = (char *)shmbrk(PGSIZE);
+	*checksum = 0;
 
-	q = (queue *)shmbrk(PGSIZE);
+	q = (queue *)((char *)checksum + sizeof(char));
 	init_queue(q);
 
 	lock = (mutex_t *)((char *)q + sizeof(queue));
@@ -180,34 +170,36 @@ checksum_producers_consumers(void)
 
 	non_full = (cond_var_t *)((char *)non_empty + sizeof(cond_var_t));
 	cv_init(non_full);
+	non_full->done = 1;
 
-	memset(done, 0, NPRODUCERS * sizeof(int));
+	ndone = (int *)((char *)non_full + sizeof(cond_var_t));
+	*ndone = 0;
 
-	// fork producers
+	// Fork producers
 	for (i = 0; i < NPRODUCERS; i++) {
 		pid = Fork();
 		if (pid == 0) {
-			// Local data
+			// Producers' local data
 			int fd;
-			char readme[12];
+			char readme[12];   // intermediary between file and shared buffer
 			int nread;
 			int j;
 
 			fd = Open("README", O_RDONLY);
 
-			// Read and append 12 byte chunks (from README to shared buffer)
+			// Read and append PCHUNKSZ byte chunks (from README to shared buffer)
 			for (nread = Read(fd, readme, PCHUNKSZ); nread != EOF; nread = Read(fd, readme, PCHUNKSZ)) {
 				mutex_lock(lock);
 				while (nread > BUFSIZE - q->size) {
-					printf(1, "Producer %d waiting\n", i);
+//					printf(1, "Producer %d waiting\n", i);
 					cv_wait(non_full, lock);
-					printf(1, "Producer %d waking up\n", i);
+//					printf(1, "Producer %d waking up\n", i);
 				}
 
 				for (j = 0; j < nread; j++)
 					enqueue(q, readme[j]);
 
-				printf(1, "Producer %d enqueued %d chars\n", i, nread);
+//				printf(1, "Producer %d enqueued %d chars\n", i, nread);
 
 				cv_bcast(non_empty);
 				mutex_unlock(lock);
@@ -217,20 +209,20 @@ checksum_producers_consumers(void)
 			close(fd);
 
 			mutex_lock(lock);
-			done[i] = 1;
+			*ndone = *ndone + 1;
 			mutex_unlock(lock);
 
-			printf(1, "Producer %d finished <--------------------\n", i);
+			printf(1, "Producer %d finished\n", i);
 			exit();
 		}
 	}
 
-	// fork 4 consumers
+	// Fork 4 consumers
 	for (i = 0; i < NCONSUMERS; i++) {
 		pid = Fork();
 		if (pid == 0) {
-			// Local data
-			char sum;
+			// Consumers' local data
+			char sum;     // consumer's local byte-level sum
 			int nitems;
 			int j;
 
@@ -239,19 +231,20 @@ checksum_producers_consumers(void)
 			// Read and sum 8 byte chunks (from shared buffer to local sum
 			while (1) {
 				mutex_lock(lock);
-				while (q->size == 0 && !producers_done(done, NPRODUCERS)) {
-					printf(1, "Consumer %d waiting\n", i);
+
+				while (q->size == 0 && *ndone < NPRODUCERS) {
+//					printf(1, "Consumer %d waiting\n", i);
 					cv_wait(non_empty, lock);
-					printf(1, "Consumer %d waking up\n", i);
+//					printf(1, "Consumer %d waking up\n", i);
 				}
 
 				nitems = (q->size > CCHUNKSZ)? CCHUNKSZ : q->size;
 				for (j = 0; j < nitems; j++)
-					sum += dequeue(q);
+					sum = sum + dequeue(q);
 
-				printf(1, "Consumer %d dequeued %d chars\n", i, nitems);
+//				printf(1, "Consumer %d dequeued %d chars\n", i, nitems);
 
-				if (q->size == 0 && producers_done(done, NPRODUCERS)) {
+				if (q->size == 0 && *ndone == NPRODUCERS) {
 					mutex_unlock(lock);
 					break;
 				}
@@ -262,10 +255,10 @@ checksum_producers_consumers(void)
 
 			// Add to global checksum
 			mutex_lock(lock);
-			checksum += sum;
+			*checksum = *checksum + sum;
 			mutex_unlock(lock);
 
-			printf(1, "Consumer %d finished <--------------------\n", i);
+			printf(1, "Consumer %d finished\n", i);
 			exit();
 		}
 	}
@@ -274,14 +267,23 @@ checksum_producers_consumers(void)
 	for (i = 0; i < NPRODUCERS + NCONSUMERS; i++)
 		wait();
 
-	printf(1, "README (x4) producers/consumers checksum = %d\n", checksum);
+	printf(1, "README (x4) producers/consumers checksum = %d\n", *checksum);
+
+	return *checksum;
 }
 
 int
 main(void)
 {
-	checksum_single_process();
-	checksum_producers_consumers();
+	char checksum[2];
+
+	checksum[0] = checksum_single_process();
+	checksum[1] = checksum_producers_consumers();
+
+	if (checksum[0] != checksum[1])
+		printf(1, "Checksum test failed: checksums are different\n");
+	else
+		printf(1, "Checksum test OK\n");
 
 	exit();
 }
