@@ -71,7 +71,7 @@ checksum_single_process(void)
 
 	checksum = 0;
 
-	for (i = 0; i < 4; i++) {
+	for (i = 0; i < NPRODUCERS; i++) {
 		fd = Open("README", O_RDONLY);
 
 		for (nread = Read(fd, &token, 1); nread != EOF; nread = Read(fd, &token, 1)) {
@@ -190,6 +190,7 @@ checksum_producers_consumers(void)
 			// Read and append PCHUNKSZ byte chunks (from README to shared buffer)
 			for (nread = Read(fd, readme, PCHUNKSZ); nread != EOF; nread = Read(fd, readme, PCHUNKSZ)) {
 				mutex_lock(lock);
+
 				while (nread > BUFSIZE - q->size) {
 //					printf(1, "Producer %d waiting\n", i);
 					cv_wait(non_full, lock);
@@ -205,13 +206,9 @@ checksum_producers_consumers(void)
 				mutex_unlock(lock);
 			}
 
-			// Clean up
+			// Reached EOF
 			close(fd);
-
-			mutex_lock(lock);
-			*ndone = *ndone + 1;
-			mutex_unlock(lock);
-
+			__sync_fetch_and_add(ndone, 1);
 			printf(1, "Producer %d finished\n", i);
 			exit();
 		}
@@ -253,11 +250,8 @@ checksum_producers_consumers(void)
 				mutex_unlock(lock);
 			}
 
-			// Add to global checksum
-			mutex_lock(lock);
-			*checksum = *checksum + sum;
-			mutex_unlock(lock);
-
+			// Buffer is empty and all producers are done
+			__sync_fetch_and_add(checksum, sum);
 			printf(1, "Consumer %d finished\n", i);
 			exit();
 		}
