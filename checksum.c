@@ -61,7 +61,7 @@ Read(int fd, void *buf, int size)
 char
 checksum_single_process(void)
 {
-	printf(1, "README (x4) single process checksum\n");
+	printf(1, "Single process checksum\n");
 
 	int fd;          // README file descriptor
 	char checksum;   // byte-level checksum of 4 README files
@@ -74,14 +74,13 @@ checksum_single_process(void)
 	for (i = 0; i < NPRODUCERS; i++) {
 		fd = Open("README", O_RDONLY);
 
-		for (nread = Read(fd, &token, 1); nread != EOF; nread = Read(fd, &token, 1)) {
+		for (nread = Read(fd, &token, 1); nread != EOF; nread = Read(fd, &token, 1))
 			checksum += token;
-		}
 
 		close(fd);
 	}
 
-	printf(1, "README (x4) single process checksum = %d\n", checksum);
+	printf(1, "Single process checksum OK\n");
 
 	return checksum;
 }
@@ -141,7 +140,7 @@ dequeue(queue *q)
 char
 checksum_producers_consumers(void)
 {
-	printf(1, "README (x4) producers/consumers checksum\n");
+	printf(1, "Producers/consumers checksum\n");
 
 	// Parent's local data
 	int pid;
@@ -209,7 +208,7 @@ checksum_producers_consumers(void)
 			// Reached EOF
 			close(fd);
 			__sync_fetch_and_add(ndone, 1);
-			printf(1, "Producer %d finished\n", i);
+//			printf(1, "Producer %d finished\n", i);
 			exit();
 		}
 	}
@@ -252,7 +251,7 @@ checksum_producers_consumers(void)
 
 			// Buffer is empty and all producers are done
 			__sync_fetch_and_add(checksum, sum);
-			printf(1, "Consumer %d finished\n", i);
+//			printf(1, "Consumer %d finished\n", i);
 			exit();
 		}
 	}
@@ -261,7 +260,7 @@ checksum_producers_consumers(void)
 	for (i = 0; i < NPRODUCERS + NCONSUMERS; i++)
 		wait();
 
-	printf(1, "README (x4) producers/consumers checksum = %d\n", *checksum);
+	printf(1, "Producers/consumers checksum OK\n");
 
 	return *checksum;
 }
@@ -274,10 +273,13 @@ main(void)
 	checksum[0] = checksum_single_process();
 	checksum[1] = checksum_producers_consumers();
 
+	printf(1, "Single process checksum = %d\n", checksum[0]);
+	printf(1, "Producers/consumers checksum = %d\n", checksum[1]);
+
 	if (checksum[0] != checksum[1])
-		printf(1, "Checksum test failed: checksums are different\n");
+		printf(1, "Checksums don't match\n");
 	else
-		printf(1, "Checksum test OK\n");
+		printf(1, "Checksums match OK\n");
 
 	exit();
 }
